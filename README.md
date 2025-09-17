@@ -243,6 +243,88 @@ TaskDefinitions = {
 ```
 </details>
 
+### Reusable Task Modules with `import`
+
+You can create reusable libraries of tasks and import them into your main workflow file. This is useful for sharing common tasks (like building Docker images, deploying applications, etc.) across multiple projects.
+
+The global `import()` function loads another Lua file and returns the value it returns. The path is resolved relative to the file calling `import`.
+
+**How it works:**
+1.  Create a module (e.g., `shared/docker.lua`) that defines a table of tasks and returns it.
+2.  In your main file, call `import("shared/docker.lua")` to load the module.
+3.  Reference the imported tasks in your main `TaskDefinitions` table using a `uses` field. `sloth-runner` will automatically merge the imported task with any local overrides you provide (like `description` or `params`).
+
+<details>
+<summary>Example Module (`examples/shared/docker.lua`):</summary>
+
+```lua
+-- examples/shared/docker.lua
+-- A reusable module for Docker tasks.
+
+local TaskDefinitions = {
+    build = {
+        name = "build",
+        description = "Builds a Docker image",
+        params = {
+            tag = "latest",
+            dockerfile = "Dockerfile",
+            context = "."
+        },
+        command = function(params)
+            local image_name = params.image_name or "my-default-image"
+            -- ... build command logic ...
+            local cmd = string.format("docker build -t %s:%s -f %s %s", image_name, params.tag, params.dockerfile, params.context)
+            return true, cmd
+        end
+    },
+    push = {
+        name = "push",
+        description = "Pushes a Docker image to a registry",
+        -- ... push task logic ...
+    }
+}
+
+return TaskDefinitions
+```
+</details>
+
+<details>
+<summary>Example Usage (`examples/reusable_tasks.lua`):</summary>
+
+```lua
+-- examples/reusable_tasks.lua
+
+-- Import the reusable Docker tasks.
+local docker_tasks = import("shared/docker.lua")
+
+TaskDefinitions = {
+    app_deployment = {
+        description = "A workflow that uses a reusable Docker module.",
+        tasks = {
+            -- Use the 'build' task from the module and override its params.
+            build = {
+                uses = docker_tasks.build,
+                description = "Build the main application Docker image",
+                params = {
+                    image_name = "my-app",
+                    tag = "v1.0.0",
+                    context = "./app"
+                }
+            },
+            
+            -- A regular task that depends on the imported 'build' task.
+            deploy = {
+                name = "deploy",
+                description = "Deploys the application",
+                depends_on = "build",
+                command = "echo 'Deploying...'"
+            }
+        }
+    }
+}
+```
+</details>
+
 ---
 
 ## 💻 CLI Commands

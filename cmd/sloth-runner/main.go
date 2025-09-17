@@ -102,6 +102,9 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 	// Open the 'salt' library for SaltStack operations
 	luainterface.OpenSalt(L)
 
+	// Open the 'import' function for importing other Lua files
+	luainterface.OpenImport(L, configFilePath)
+
 	// --- New: Load and expose values.yaml to Lua ---
 	if valuesFilePath != "" {
 		valuesContent, err := ioutil.ReadFile(valuesFilePath)
@@ -120,7 +123,7 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 	// --- End New ---
 
 	// Load the rendered Lua script content and parse task definitions
-	taskGroups, err := luainterface.LoadTaskDefinitions(L, renderedLua.String())
+	taskGroups, err := luainterface.LoadTaskDefinitions(L, renderedLua.String(), configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading task definitions: %w", err)
 	}
