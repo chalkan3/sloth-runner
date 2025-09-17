@@ -2,6 +2,7 @@ package luainterface
 
 import (
 	"bytes" // Added for command output
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -512,7 +513,12 @@ func luaExecCommand(L *lua.LState) int {
 		}
 	}
 
-	cmd := exec.Command(cmdName, args...)
+	ctx := L.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	cmd := exec.CommandContext(ctx, cmdName, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -632,7 +638,10 @@ func OpenSalt(L *lua.LState) {
 // ExecuteLuaFunction calls a Lua function with given parameters and captures return values.
 // It expects the Lua function to return (bool success, string message, [table output]).
 // It returns (bool success, string message, *lua.LTable output, error goError).
-func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]string, secondArg lua.LValue, nRet int) (bool, string, *lua.LTable, error) {
+func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]string, secondArg lua.LValue, nRet int, ctx context.Context) (bool, string, *lua.LTable, error) {
+	if ctx != nil {
+		L.SetContext(ctx)
+	}
 	L.Push(fn)
 
 	// Push params as a Lua table
@@ -799,6 +808,30 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 					dependsOn = []string{}
 				}
 
+				retries := 0
+				luaRetries := taskTable.RawGetString("retries")
+				if luaRetries.Type() == lua.LTNumber {
+					retries = int(lua.LVAsNumber(luaRetries))
+				}
+
+				timeout := ""
+				luaTimeout := taskTable.RawGetString("timeout")
+				if luaTimeout.Type() == lua.LTString {
+					timeout = lua.LVAsString(luaTimeout)
+				}
+
+				runIf := ""
+				luaRunIf := taskTable.RawGetString("run_if")
+				if luaRunIf.Type() == lua.LTString {
+					runIf = lua.LVAsString(luaRunIf)
+				}
+
+				abortIf := ""
+				luaAbortIf := taskTable.RawGetString("abort_if")
+				if luaAbortIf.Type() == lua.LTString {
+					abortIf = lua.LVAsString(luaAbortIf)
+				}
+
 				tasks = append(tasks, types.Task{
 					Name:        name,
 					Description: desc,
@@ -809,6 +842,10 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 					PostExec:    postExecFunc,
 					Async:       async,
 					DependsOn:   dependsOn,
+					Retries:     retries,
+					Timeout:     timeout,
+					RunIf:       runIf,
+					AbortIf:     abortIf,
 				})
 			})
 		}

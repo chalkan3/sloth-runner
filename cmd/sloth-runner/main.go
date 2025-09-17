@@ -34,6 +34,7 @@ var (
 	targetTasksStr string
 	targetGroup    string
 	valuesFilePath string // New: Path to a values.yaml file
+	dryRun         bool
 )
 
 // loadAndRenderLuaConfig reads, renders, and loads Lua task definitions.
@@ -170,7 +171,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 		luainterface.OpenSalt(L) // Ensure salt is opened for the runner's Lua state
 
 		// Create a new TaskRunner instance
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks)
+		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
 
 		// Run the tasks
 		if err := tr.Run(); err != nil {
@@ -230,6 +231,7 @@ func init() {
 	runCmd.Flags().StringVarP(&targetTasksStr, "tasks", "t", "", "Comma-separated list of specific tasks to run (e.g., task1,task2)")
 	runCmd.Flags().StringVarP(&targetGroup, "group", "g", "", "Run tasks only from a specific task group")
 	runCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for runCmd
+	runCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Simulate the execution of tasks without actually running them")
 
 	// Flags for list command (can reuse configFilePath, env, isProduction, shardsStr)
 	listCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")

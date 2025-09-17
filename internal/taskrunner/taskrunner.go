@@ -1,29 +1,37 @@
 package taskrunner
 
 import (
-	"encoding/json" // Import for JSON marshaling
+	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"sync"
-	"time" // Import time for timestamp
-
-	lua "github.com/yuin/gopher-lua"
+	"time"
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/types"
+	"github.com/pterm/pterm"
+	lua "github.com/yuin/gopher-lua"
 )
 
-// ANSI color codes
-const (
-	Reset  = "\033[0m"
-	Red    = "\033[31m"
-	Green  = "\033[32m"
-	Yellow = "\033[33m"
-	Blue   = "\033[34m"
-	Purple = "\033[35m"
-	Cyan   = "\033[36m"
-	White  = "\033[37m"
-)
+// executeShellCondition executes a shell command and returns true if it succeeds (exit code 0).
+func executeShellCondition(command string) (bool, error) {
+	if command == "" {
+		return false, fmt.Errorf("command cannot be empty")
+	}
+	cmd := exec.Command("bash", "-c", command)
+	if err := cmd.Run(); err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			// Command executed but returned a non-zero exit code.
+			return false, nil
+		}
+		// Other error (e.g., command not found).
+		return false, err
+	}
+	// Command succeeded.
+	return true, nil
+}
+
 
 type TaskError struct {
 	TaskName string
@@ -53,137 +61,188 @@ func NewTaskError(taskName string, err error, errType TaskErrorType) *TaskError 
 	}
 }
 
+type TaskResult struct {
+	Name     string
+	Status   string
+	Duration time.Duration
+	Error    error
+}
+
 type TaskRunner struct {
 	L           *lua.LState
 	TaskGroups  map[string]types.TaskGroup
 	TargetGroup string
 	TargetTasks []string
+	Results     []TaskResult
+	Outputs     map[string]interface{}
+	DryRun      bool
 }
 
-func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string) *TaskRunner {
+func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
 		TaskGroups:  groups,
 		TargetGroup: targetGroup,
 		TargetTasks: targetTasks,
+		Outputs:     make(map[string]interface{}),
+		DryRun:      dryRun,
 	}
 }
 
-// runTask encapsulates the logic for executing a single task.
-// inputFromDependencies is a Lua table where keys are dependency names and values are their outputs.
-func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) (taskErr error) {
+func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) error {
+	// AbortIf check
+	if t.AbortIf != "" {
+		shouldAbort, err := executeShellCondition(t.AbortIf)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if condition: %w", err), ErrorTypeCommand)
+		}
+		if shouldAbort {
+			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if condition"), ErrorTypeCommand)
+		}
+	}
+
+	// RunIf check
+	if t.RunIf != "" {
+		shouldRun, err := executeShellCondition(t.RunIf)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if condition: %w", err), ErrorTypeCommand)
+		}
+		if !shouldRun {
+			pterm.Info.Printf("Skipping task '%s' due to run_if condition.\n", t.Name)
+			mu.Lock()
+			tr.Results = append(tr.Results, TaskResult{
+				Name:   t.Name,
+				Status: "Skipped",
+			})
+			completedTasks[t.Name] = true
+			delete(runningTasks, t.Name)
+			mu.Unlock()
+			return nil
+		}
+	}
+
+	// DryRun check
+	if tr.DryRun {
+		pterm.Info.Printf("(Dry Run) Would execute task: %s\n", t.Name)
+		mu.Lock()
+		tr.Results = append(tr.Results, TaskResult{
+			Name:   t.Name,
+			Status: "DryRun",
+		})
+		completedTasks[t.Name] = true
+		delete(runningTasks, t.Name)
+		mu.Unlock()
+		return nil
+	}
+
+	var taskErr error
+	var spinner *pterm.SpinnerPrinter
+
+	for i := 0; i <= t.Retries; i++ {
+		if i > 0 {
+			pterm.Warning.Printf("Task '%s' failed. Retrying in 1s (%d/%d)...\n", t.Name, i, t.Retries)
+			time.Sleep(1 * time.Second)
+		}
+
+		spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("Executing task: %s", t.Name))
+
+		var ctx context.Context
+		var cancel context.CancelFunc
+
+		if t.Timeout != "" {
+			timeout, err := time.ParseDuration(t.Timeout)
+			if err != nil {
+				return NewTaskError(t.Name, fmt.Errorf("invalid timeout duration: %w", err), ErrorTypeUnknown)
+			}
+			ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		} else {
+			ctx, cancel = context.WithCancel(context.Background())
+		}
+		defer cancel()
+
+		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks)
+
+		if taskErr == nil {
+			spinner.Success(fmt.Sprintf("Task '%s' completed successfully", t.Name))
+			return nil // Success
+		}
+	}
+
+	spinner.Fail(fmt.Sprintf("Task '%s' failed after %d retries: %v", t.Name, t.Retries, taskErr))
+	return taskErr // Final failure
+}
+
+func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) (taskErr error) {
 	startTime := time.Now()
-	// taskStatus and taskComment are now handled by the defer function based on taskErr
-	// Initialize t.Output to an empty Lua table to prevent nil pointer dereferences in Lua
 	t.Output = tr.L.NewTable()
 
-	defer func() {
-		mu.Lock()
-		taskOutputs[t.Name] = t.Output // Store output for dependencies
-		completedTasks[t.Name] = true // Mark task as completed after execution
-		delete(runningTasks, t.Name) // Remove from running tasks
-		mu.Unlock()
-
-		duration := time.Since(startTime)
-		emoji := "❌"
-		taskStatus := "Failed"
-		statusColor := Red
-		taskComment := ""
-
-		if taskErr == nil { // Check taskErr here
-			taskStatus = "Success"
-			emoji = "✅"
-			statusColor = Green
-			taskComment = fmt.Sprintf("Task '%s' completed successfully.", t.Name)
-		} else {
-			taskComment = taskErr.Error() // Use the error message as the comment
-		}
-
-		fmt.Printf("----------\n")
-		fmt.Printf("%s%s ID: %s%s\n", statusColor, emoji, t.Name, Reset)
-		fmt.Printf("    Function: %s\n", t.Description)
-		fmt.Printf("      Result: %s%s%s\n", statusColor, taskStatus, Reset)
-		fmt.Printf("     Comment: %s\n", taskComment) // Use the dynamic taskComment
-		if t.Output != nil {
-			goMap := luainterface.LuaTableToGoMap(tr.L, t.Output)
-			jsonOutput, err := json.MarshalIndent(goMap, "             ", "  ")
-			if err != nil {
-				fmt.Printf("     Changes: Error marshaling output: %v\n", err)
-			} else {
-				fmt.Printf("     Changes: Output:\n%s\n", string(jsonOutput))
-			}
-		}
-		fmt.Printf("    Duration: %s\n", duration)
-		fmt.Printf("----------\n")
-	}()
-
-	// Call pre_exec hook if it exists
 	if t.PreExec != nil {
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2) // Expect 2 return values
+		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing pre_exec hook: %w", err), ErrorTypePreExec)
-			log.Println(taskErr.Error())
 		} else if !success {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("pre-execution hook failed: %s", msg), ErrorTypePreExec)
 		}
 	}
 
-	// Only proceed with command and post_exec if pre_exec was successful or didn't exist
 	if taskErr == nil {
 		if t.CommandFunc != nil {
-			// Call the Lua command function to get the command string and output
-			success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3) // Expect 3 return values
+			success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx)
 			if err != nil {
 				taskErr = NewTaskError(t.Name, fmt.Errorf("error executing command function: %w", err), ErrorTypeCommand)
 			} else if !success {
 				taskErr = NewTaskError(t.Name, fmt.Errorf("command function returned failure: %s", msg), ErrorTypeCommand)
-			} else {
-				if outputTable != nil {
-					t.Output = outputTable
-				}
+			} else if outputTable != nil {
+				t.Output = outputTable
 			}
-		} else {
-			// If no dynamic command, check if a static command string is available
-			if t.CommandStr == "" {
-				taskErr = NewTaskError(t.Name, fmt.Errorf("task has no command defined"), ErrorTypeCommand)
-			}
+		} else if t.CommandStr == "" {
+			taskErr = NewTaskError(t.Name, fmt.Errorf("task has no command defined"), ErrorTypeCommand)
 		}
 	}
 
-	// Call post_exec hook if it exists, only if no error occurred so far
 	if taskErr == nil && t.PostExec != nil {
-		// Pass task params and its own output to post_exec
-		var postExecSecondArg lua.LValue
-		if t.Output != nil {
-			postExecSecondArg = t.Output
-		} else {
-			postExecSecondArg = tr.L.NewTable() // Ensure an empty table is passed if t.Output is nil
+		var postExecSecondArg lua.LValue = t.Output
+		if t.Output == nil {
+			postExecSecondArg = tr.L.NewTable()
 		}
-
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2) // Expect 2 return values
+		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2, ctx)
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing post_exec hook: %w", err), ErrorTypePostExec)
-			log.Println(taskErr.Error())
 		} else if !success {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("post-execution hook failed: %s", msg), ErrorTypePostExec)
 		}
 	}
+
+	duration := time.Since(startTime)
+	status := "Success"
+	if taskErr != nil {
+		status = "Failed"
+	}
+
+	mu.Lock()
+	tr.Results = append(tr.Results, TaskResult{
+		Name:     t.Name,
+		Status:   status,
+		Duration: duration,
+		Error:    taskErr,
+	})
+	taskOutputs[t.Name] = t.Output
+	completedTasks[t.Name] = true
+	delete(runningTasks, t.Name)
+	mu.Unlock()
 
 	return taskErr
 }
 
 func (tr *TaskRunner) Run() error {
 	if len(tr.TaskGroups) == 0 {
-		fmt.Println("No task groups defined.")
+		pterm.Warning.Println("No task groups defined.")
 		return nil
 	}
 
-	fmt.Printf("%s---\n", Blue)
-	fmt.Printf("%sExecuting Tasks\n", Blue)
-	fmt.Printf("%s---\n", Blue)
+	pterm.DefaultHeader.Println("Executing Tasks")
 	var allGroupErrors []error
 
-	// Filter groups if TargetGroup is specified
 	filteredGroups := make(map[string]types.TaskGroup)
 	if tr.TargetGroup != "" {
 		if group, ok := tr.TaskGroups[tr.TargetGroup]; ok {
@@ -196,15 +255,13 @@ func (tr *TaskRunner) Run() error {
 	}
 
 	for groupName, group := range filteredGroups {
-		fmt.Printf("\n%sGroup: %s (Description: %s)%s\n", Cyan, groupName, group.Description, Reset)
+		pterm.DefaultSection.Printf("Group: %s (Description: %s)\n", groupName, group.Description)
 
-		// Create a map for quick task lookup by name for the original group
 		originalTaskMap := make(map[string]*types.Task)
 		for i := range group.Tasks {
 			originalTaskMap[group.Tasks[i].Name] = &group.Tasks[i]
 		}
 
-		// Resolve tasks to run, including dependencies
 		tasksToRun, err := tr.resolveTasksToRun(originalTaskMap, tr.TargetTasks)
 		if err != nil {
 			allGroupErrors = append(allGroupErrors, fmt.Errorf("error resolving tasks for group '%s': %w", groupName, err))
@@ -212,11 +269,10 @@ func (tr *TaskRunner) Run() error {
 		}
 
 		if len(tasksToRun) == 0 {
-			fmt.Printf("No tasks to run in group '%s' after filtering.\n", groupName)
+			pterm.Info.Printf("No tasks to run in group '%s' after filtering.\n", groupName)
 			continue
 		}
 
-		// Map to store outputs of tasks within this group
 		taskOutputs := make(map[string]*lua.LTable)
 		completedTasks := make(map[string]bool)
 		runningTasks := make(map[string]bool)
@@ -224,18 +280,16 @@ func (tr *TaskRunner) Run() error {
 		var mu sync.Mutex
 		errChan := make(chan error, len(tasksToRun))
 
-		// Create a map for quick task lookup by name for tasksToRun
 		taskMap := make(map[string]*types.Task)
 		for _, task := range tasksToRun {
 			taskMap[task.Name] = task
 		}
 
-		// Loop until all tasks are completed
 		for {
 			mu.Lock()
 			if len(completedTasks) == len(tasksToRun) {
 				mu.Unlock()
-				break // All tasks completed
+				break
 			}
 			mu.Unlock()
 
@@ -249,9 +303,7 @@ func (tr *TaskRunner) Run() error {
 				mu.Unlock()
 
 				dependencyMet := true
-				// Check all dependencies
 				for _, depName := range task.DependsOn {
-					// Only consider dependencies that are part of the tasksToRun set
 					if _, exists := taskMap[depName]; exists {
 						mu.Lock()
 						if !completedTasks[depName] {
@@ -266,19 +318,18 @@ func (tr *TaskRunner) Run() error {
 
 				if dependencyMet {
 					tasksLaunchedThisIteration++
-					// Resolve input from dependencies
 					inputFromDependencies := tr.L.NewTable()
 					for _, depName := range task.DependsOn {
-						if _, exists := taskMap[depName]; exists { // Only add output if dependency is part of tasksToRun
+						if _, exists := taskMap[depName]; exists {
 							mu.Lock()
 							depOutput := taskOutputs[depName]
-								mu.Unlock()
+							mu.Unlock()
 							if depOutput != nil {
-									inputFromDependencies.RawSetString(depName, depOutput)
-								} else {
-									inputFromDependencies.RawSetString(depName, tr.L.NewTable())
-								}
+								inputFromDependencies.RawSetString(depName, depOutput)
+							} else {
+								inputFromDependencies.RawSetString(depName, tr.L.NewTable())
 							}
+						}
 					}
 
 					if task.Async {
@@ -288,7 +339,7 @@ func (tr *TaskRunner) Run() error {
 						wg.Add(1)
 						go func(t *types.Task, input *lua.LTable) {
 							defer wg.Done()
-							if err := tr.runTask(t, input, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
+							if err := tr.executeTaskWithRetries(t, input, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
 								errChan <- err
 							}
 						}(task, inputFromDependencies)
@@ -296,15 +347,13 @@ func (tr *TaskRunner) Run() error {
 						mu.Lock()
 						runningTasks[task.Name] = true
 						mu.Unlock()
-						if err := tr.runTask(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
+						if err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
 							errChan <- err
 						}
 					}
 				}
 			}
 
-			// If no tasks were launched in this iteration, and not all tasks are completed,
-			// it means there's a circular dependency or unresolvable tasks.
 			if tasksLaunchedThisIteration == 0 {
 				mu.Lock()
 				if len(completedTasks) < len(tasksToRun) {
@@ -318,16 +367,15 @@ func (tr *TaskRunner) Run() error {
 					circularErr := NewTaskError("group "+groupName, fmt.Errorf("circular dependency or unresolvable tasks. Uncompleted tasks: %v", uncompletedTasks), ErrorTypeDependency)
 					log.Println(circularErr.Error())
 					errChan <- circularErr
-					break // Break the inner loop to stop processing this group
+					break
 				}
 				mu.Unlock()
 			}
-			wg.Wait() // Wait for all tasks launched in this iteration to finish
+			wg.Wait()
 		}
 
-		close(errChan) // Close the channel after all tasks are done for this group
+		close(errChan)
 
-		// Collect errors for the current group
 		var groupErrors []error
 		for err := range errChan {
 			groupErrors = append(groupErrors, err)
@@ -336,7 +384,26 @@ func (tr *TaskRunner) Run() error {
 		if len(groupErrors) > 0 {
 			allGroupErrors = append(allGroupErrors, fmt.Errorf("task group '%s' encountered errors: %v", groupName, groupErrors))
 		}
+
+		mu.Lock()
+		for taskName, outputTable := range taskOutputs {
+			tr.Outputs[taskName] = luainterface.LuaTableToGoMap(tr.L, outputTable)
+		}
+		mu.Unlock()
 	}
+
+	pterm.DefaultSection.Println("Execution Summary")
+	tableData := pterm.TableData{{"Task", "Status", "Duration", "Error"}}
+	for _, result := range tr.Results {
+		status := pterm.Green(result.Status)
+		errStr := ""
+		if result.Error != nil {
+			status = pterm.Red(result.Status)
+			errStr = result.Error.Error()
+		}
+		tableData = append(tableData, []string{result.Name, status, result.Duration.String(), errStr})
+	}
+	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
 	if len(allGroupErrors) > 0 {
 		return fmt.Errorf("one or more task groups failed: %v", allGroupErrors)
@@ -344,10 +411,8 @@ func (tr *TaskRunner) Run() error {
 	return nil
 }
 
-// resolveTasksToRun determines the final list of tasks to execute, including their dependencies.
 func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, targetTasks []string) ([]*types.Task, error) {
 	if len(targetTasks) == 0 {
-		// If no specific tasks are targeted, run all tasks in the group
 		var allTasks []*types.Task
 		for _, task := range originalTaskMap {
 			allTasks = append(allTasks, task)
@@ -359,38 +424,25 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 	queue := make([]string, 0, len(targetTasks))
 	visited := make(map[string]bool)
 
-	// Add target tasks to the queue, only if they exist in the current group
-	var actualTargetTasksInGroup []string
 	for _, taskName := range targetTasks {
-		if _, ok := originalTaskMap[taskName]; ok {
-			actualTargetTasksInGroup = append(actualTargetTasksInGroup, taskName)
-		} else {
-			log.Println("Warning: Targeted task '" + taskName + "' not found in group. Skipping for this group.")
+		if !visited[taskName] {
+			queue = append(queue, taskName)
+			visited[taskName] = true
 		}
 	}
 
-	if len(actualTargetTasksInGroup) == 0 {
-		return []*types.Task{}, nil // No tasks to run in this group if none of the targeted tasks exist here
-	}
-
-	for _, taskName := range actualTargetTasksInGroup {
-		queue = append(queue, taskName)
-		visited[taskName] = true
-	}
-
-	// BFS to find all dependencies
 	head := 0
 	for head < len(queue) {
 		currentTaskName := queue[head]
 		head++
 
-		currentTask := originalTaskMap[currentTaskName]
+		currentTask, ok := originalTaskMap[currentTaskName]
+		if !ok {
+			return nil, fmt.Errorf("task '%s' not found in group", currentTaskName)
+		}
 		resolved[currentTaskName] = currentTask
 
 		for _, depName := range currentTask.DependsOn {
-			if _, ok := originalTaskMap[depName]; !ok {
-				return nil, fmt.Errorf("dependency '%s' for task '%s' not found in group", depName, currentTaskName)
-			}
 			if !visited[depName] {
 				visited[depName] = true
 				queue = append(queue, depName)
@@ -398,11 +450,11 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 		}
 	}
 
-	// Convert resolved map to a slice
 	var result []*types.Task
 	for _, task := range resolved {
 		result = append(result, task)
 	}
 	return result, nil
 }
+
 
