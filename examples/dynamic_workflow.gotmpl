@@ -49,7 +49,7 @@ TaskDefinitions = {
             {
                 name = "cleanup",
                 description = "Cleans up resources after all shards are processed",
-                depends_on = { {{range $i, $e := .Shards}}"process_shard_{{$i}}",{{end}} },
+                depends_on = { {{range $i, $e := .Shards}}{{if $i}}, {{end}}"process_shard_{{$i}}"{{end}} },
                 command = function(params, input_from_dependency)
                     print("Lua: Cleaning up...")
                     return true, "echo 'Cleanup complete'", { cleanup_status = "done" }
