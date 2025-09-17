@@ -22,6 +22,16 @@ A flexible and extensible task runner application written in Go, powered by Lua 
 
 ## Getting Started
 
+## Installation
+
+To install `sloth-runner` on your system, you can use the provided `install.sh` script. This script automatically detects your operating system and architecture, downloads the latest release from GitHub, and places the `sloth-runner` executable in `/usr/local/bin`.
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/chalkan3/sloth-runner/master/install.sh)
+```
+
+**Note:** The `install.sh` script requires `sudo` privileges to move the executable to `/usr/local/bin`.
+
 To run the `sloth-runner` application:
 
 ```bash

@@ -1,0 +1,36 @@
+version: 2
+project_name: sloth-runner
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/sloth-runner
+    binary: sloth-runner
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+snapshot:
+  name_template: "{{ .ProjectName }}_snapshot_{{ .Version }}"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+release:
+  github:
+    owner: chalkan3
+    name: sloth-runner
+  prerelease: auto
