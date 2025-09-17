@@ -9,7 +9,7 @@ import (
 
 	lua "github.com/yuin/gopher-lua"
 
-	"sloth-runner/internal/luainterface"
+	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"sloth-runner/internal/types"
 )
 

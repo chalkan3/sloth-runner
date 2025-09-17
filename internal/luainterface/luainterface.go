@@ -15,7 +15,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 	"gopkg.in/yaml.v2"
 
-	"sloth-runner/internal/types"
+	"github.com/chalkan3/sloth-runner/internal/types"
 )
 
 // GoValueToLua converts a Go interface{} value to a Lua LValue.

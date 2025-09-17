@@ -13,9 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sloth-runner/internal/luainterface"
-	"sloth-runner/internal/taskrunner"
-	"sloth-runner/internal/types"
+	"github.com/chalkan3/sloth-runner/internal/luainterface"
+	"github.com/chalkan3/sloth-runner/internal/taskrunner"
+	"github.com/chalkan3/sloth-runner/internal/types"
 	"gopkg.in/yaml.v2" // Added for YAML parsing
 )
 

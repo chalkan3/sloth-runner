@@ -1,4 +1,4 @@
-module sloth-runner
+module github.com/chalkan3/sloth-runner
 
 go 1.25.1
 
