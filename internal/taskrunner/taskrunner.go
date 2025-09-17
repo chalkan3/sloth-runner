@@ -91,7 +91,15 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 
 func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) error {
 	// AbortIf check
-	if t.AbortIf != "" {
+	if t.AbortIfFunc != nil {
+		shouldAbort, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.AbortIfFunc, t.Params, inputFromDependencies, 1, nil)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if function: %w", err), ErrorTypeCommand)
+		}
+		if shouldAbort {
+			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if function"), ErrorTypeCommand)
+		}
+	} else if t.AbortIf != "" {
 		shouldAbort, err := executeShellCondition(t.AbortIf)
 		if err != nil {
 			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if condition: %w", err), ErrorTypeCommand)
@@ -102,7 +110,24 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	}
 
 	// RunIf check
-	if t.RunIf != "" {
+	if t.RunIfFunc != nil {
+		shouldRun, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.RunIfFunc, t.Params, inputFromDependencies, 1, nil)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if function: %w", err), ErrorTypeCommand)
+		}
+		if !shouldRun {
+			pterm.Info.Printf("Skipping task '%s' due to run_if function condition.\n", t.Name)
+			mu.Lock()
+			tr.Results = append(tr.Results, TaskResult{
+				Name:   t.Name,
+				Status: "Skipped",
+			})
+			completedTasks[t.Name] = true
+			delete(runningTasks, t.Name)
+			mu.Unlock()
+			return nil
+		}
+	} else if t.RunIf != "" {
 		shouldRun, err := executeShellCondition(t.RunIf)
 		if err != nil {
 			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if condition: %w", err), ErrorTypeCommand)

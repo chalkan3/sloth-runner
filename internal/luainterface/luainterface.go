@@ -821,15 +821,21 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 				}
 
 				runIf := ""
+				var runIfFunc *lua.LFunction
 				luaRunIf := taskTable.RawGetString("run_if")
 				if luaRunIf.Type() == lua.LTString {
 					runIf = lua.LVAsString(luaRunIf)
+				} else if luaRunIf.Type() == lua.LTFunction {
+					runIfFunc = luaRunIf.(*lua.LFunction)
 				}
 
 				abortIf := ""
+				var abortIfFunc *lua.LFunction
 				luaAbortIf := taskTable.RawGetString("abort_if")
 				if luaAbortIf.Type() == lua.LTString {
 					abortIf = lua.LVAsString(luaAbortIf)
+				} else if luaAbortIf.Type() == lua.LTFunction {
+					abortIfFunc = luaAbortIf.(*lua.LFunction)
 				}
 
 				tasks = append(tasks, types.Task{
@@ -846,6 +852,8 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 					Timeout:     timeout,
 					RunIf:       runIf,
 					AbortIf:     abortIf,
+					RunIfFunc:   runIfFunc,
+					AbortIfFunc: abortIfFunc,
 				})
 			})
 		}

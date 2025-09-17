@@ -19,6 +19,8 @@ type Task struct {
 	Timeout     string         // Timeout for the task (e.g., "30s", "1m")
 	RunIf       string         // A shell command that must succeed for the task to run
 	AbortIf     string         // A shell command that, if it succeeds, will abort the entire execution
+	RunIfFunc   *lua.LFunction // A Lua function that must return true for the task to run
+	AbortIfFunc *lua.LFunction // A Lua function that, if it returns true, will abort the entire execution
 }
 
 type TaskGroup struct {
