@@ -696,54 +696,44 @@ func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]stri
 	// We expect at least 2 return values (status, message) and optionally a third (output table)
 	// nRet specifies the number of results to push onto the stack.
 	// If nRet is 0, no results are pushed. If nRet is lua.MultRet, all results are pushed.
-	if err := L.PCall(numArgs, nRet, nil); err != nil {
+	if err := L.PCall(numArgs, lua.MultRet, nil); err != nil {
 		return false, "", nil, fmt.Errorf("error executing Lua function: %w", err)
 	}
 
-	// Pop results from the stack.
-	// The results are on the stack in the order they were returned by Lua.
-	// So, if Lua returns (success, message, output), they are on stack as success, message, output.
-	// We need to pop them in reverse order of how we want to process them.
+	// After PCall, results are on the stack. Let's get them safely.
+	top := L.GetTop()
 
 	var success bool
 	var message string
 	var outputTable *lua.LTable
 
-	// Get output table (if nRet allows for it and it's present)
-	if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTTable {
-		outputTable = L.Get(-1).(*lua.LTable)
-		L.Pop(1)
-	} else if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects an output table but it's not a table or nil, something is wrong
-		return false, fmt.Sprintf("unexpected third return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	// The return values are in order: success, message, outputTable
+	// We check them from first to last, based on what's available on the stack.
+	if top >= 1 {
+		if L.Get(1).Type() == lua.LTBool {
+			success = lua.LVAsBool(L.Get(1))
+		} else {
+			// If the first return value isn't a boolean, we can't determine success.
+			// We'll default to false and try to construct a meaningful error message.
+			success = false
+			message = fmt.Sprintf("unexpected first return type from Lua: %s", L.Get(1).Type().String())
+		}
 	}
 
-
-	// Get message (if nRet allows for it and it's present)
-	if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTString {
-		message = lua.LVAsString(L.Get(-1))
-		L.Pop(1)
-	} else if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects a message but it's not a string or nil, something is wrong
-		return false, fmt.Sprintf("unexpected second return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	if top >= 2 {
+		if L.Get(2).Type() == lua.LTString {
+			message = lua.LVAsString(L.Get(2))
+		}
 	}
 
-
-	// Get success (if nRet allows for it and it's present)
-	if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTBool {
-		success = lua.LVAsBool(L.Get(-1))
-		L.Pop(1)
-	} else if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects a success but it's not a bool or nil, something is wrong
-		return false, fmt.Sprintf("unexpected first return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	if top >= 3 {
+		if L.Get(3).Type() == lua.LTTable {
+			outputTable = L.Get(3).(*lua.LTable)
+		}
 	}
 
+	// Clean up the stack
+	L.SetTop(0)
 
 	return success, message, outputTable, nil
 }
@@ -785,28 +775,18 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 				}
 				taskTable := taskValue.(*lua.LTable)
 
-				// This is the core logic for merging an imported task with local overrides
 				var finalTask types.Task
-				var baseTask *types.Task
-
-				// Check if the task entry is a direct reference to an imported task
-				// (i.e., it's not a full definition with a 'name' field)
-				if taskTable.RawGetString("name").Type() == lua.LTNil {
-					// It's likely an imported task. Let's find its definition.
-					taskTable.ForEach(func(k, v lua.LValue) {
-						if tbl, ok := v.(*lua.LTable); ok {
-							// Heuristic: if a value is a table, assume it's the base task
-							tempTask := parseLuaTask(tbl)
-							baseTask = &tempTask
-						}
-					})
-				}
-
-				if baseTask != nil {
-					finalTask = *baseTask
+				
+				usesField := taskTable.RawGetString("uses")
+				if usesField.Type() == lua.LTTable {
+					// This is a reusable task, merge it with local overrides
+					baseTaskTable := usesField.(*lua.LTable)
+					baseTask := parseLuaTask(baseTaskTable)
+					
 					// Now, override with local values
 					localOverrides := parseLuaTask(taskTable)
 					
+					finalTask = baseTask
 					if localOverrides.Description != "" { finalTask.Description = localOverrides.Description }
 					if localOverrides.CommandFunc != nil { finalTask.CommandFunc = localOverrides.CommandFunc }
 					if localOverrides.CommandStr != "" { finalTask.CommandStr = localOverrides.CommandStr }
