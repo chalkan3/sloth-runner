@@ -7,7 +7,7 @@ TaskDefinitions = {
                 description = "Gets a list of files using 'find . -name \"*.go\"'",
                 command = function(params)
                     print("Lua: Executing 'find . -name \"*.go\"' to get file list...")
-                    local stdout, stderr, err, exit_code = exec.command("find . -name \"*.go\"")
+                    local stdout, stderr, err, exit_code = exec.command("/usr/bin/find", ".", "-name", "*.go")
 
                     if err then
                         print("Command failed: " .. err)

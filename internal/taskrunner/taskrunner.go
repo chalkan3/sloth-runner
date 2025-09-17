@@ -122,7 +122,7 @@ func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, 
 		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2) // Expect 2 return values
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing pre_exec hook: %w", err), ErrorTypePreExec)
-			log.Printf(taskErr.Error())
+			log.Println(taskErr.Error())
 		} else if !success {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("pre-execution hook failed: %s", msg), ErrorTypePreExec)
 		}
@@ -163,7 +163,7 @@ func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, 
 		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2) // Expect 2 return values
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing post_exec hook: %w", err), ErrorTypePostExec)
-			log.Printf(taskErr.Error())
+			log.Println(taskErr.Error())
 		} else if !success {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("post-execution hook failed: %s", msg), ErrorTypePostExec)
 		}
@@ -316,7 +316,7 @@ func (tr *TaskRunner) Run() error {
 					}
 					mu.Unlock()
 					circularErr := NewTaskError("group "+groupName, fmt.Errorf("circular dependency or unresolvable tasks. Uncompleted tasks: %v", uncompletedTasks), ErrorTypeDependency)
-					log.Printf(circularErr.Error())
+					log.Println(circularErr.Error())
 					errChan <- circularErr
 					break // Break the inner loop to stop processing this group
 				}
@@ -365,7 +365,7 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 		if _, ok := originalTaskMap[taskName]; ok {
 			actualTargetTasksInGroup = append(actualTargetTasksInGroup, taskName)
 		} else {
-			log.Printf("Warning: Targeted task '%s' not found in group. Skipping for this group.", taskName)
+			log.Println("Warning: Targeted task '" + taskName + "' not found in group. Skipping for this group.")
 		}
 	}
 

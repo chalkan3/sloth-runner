@@ -12,6 +12,7 @@ TaskDefinitions = {
                 async = true,
                 post_exec = function(params, output)
                     print("Lua Hook: fetch_raw_data completed. Raw data: " .. (output.raw_data or "N/A"))
+                    return true, "fetch_raw_data post_exec successful"
                 end,
             },
             {
@@ -30,6 +31,7 @@ TaskDefinitions = {
                 async = true,
                 pre_exec = function(params, input_from_dependency)
                     print("Lua Hook: validate_data_schema preparing. Input: " .. (input_from_dependency.fetch_raw_data.raw_data or "N/A"))
+                    return true, "validate_data_schema pre_exec successful"
                 end,
             },
             {
@@ -44,6 +46,7 @@ TaskDefinitions = {
                 async = true,
                 pre_exec = function(params, input_from_dependency)
                     print("Lua Hook: transform_data_format preparing. Input: " .. (input_from_dependency.validate_data_schema.validated_data or "N/A"))
+                    return true, "transform_data_format pre_exec successful"
                 end,
             },
             {
@@ -58,6 +61,7 @@ TaskDefinitions = {
                 async = true,
                 pre_exec = function(params, input_from_dependency)
                     print("Lua Hook: enrich_data preparing. Input: " .. (input_from_dependency.fetch_raw_data.raw_data or "N/A"))
+                    return true, "enrich_data pre_exec successful"
                 end,
             },
             {
@@ -72,6 +76,7 @@ TaskDefinitions = {
                 async = true,
                 pre_exec = function(params, input_from_dependency)
                     print("Lua Hook: load_to_staging preparing. Input: " .. (input_from_dependency.transform_data_format.transformed_data or "N/A"))
+                    return true, "load_to_staging pre_exec successful"
                 end,
             },
             {
