@@ -36,6 +36,7 @@ var (
 	targetTasksStr string
 	targetGroup    string
 	valuesFilePath string // New: Path to a values.yaml file
+	dryRun         bool
 	returnOutput   bool
 )
 
@@ -143,7 +144,7 @@ var runCmd = &cobra.Command{
 	Short: "Executes tasks defined in a Lua template file",
 	Long: `The run command executes tasks defined in a Lua template file.
 
-You can specify the file, environment variables, and target specific tasks or groups.`,
+You can specify the file, environment variables, and target specific tasks or groups.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -203,7 +204,8 @@ You can specify the file, environment variables, and target specific tasks or gr
 		luainterface.OpenLog(L)
 		luainterface.OpenSalt(L)
 
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks)
+		// Create a new TaskRunner instance
+		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
 
 		if err := tr.Run(); err != nil {
 			return fmt.Errorf("error running tasks: %w", err)
@@ -241,7 +243,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
-	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`,
+	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -276,7 +278,7 @@ var listCmd = &cobra.Command{
 var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validates the syntax and structure of a Lua task file",
-	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`,
+	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		_, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -301,6 +303,7 @@ func init() {
 	runCmd.Flags().StringVarP(&targetTasksStr, "tasks", "t", "", "Comma-separated list of specific tasks to run (e.g., task1,task2)")
 	runCmd.Flags().StringVarP(&targetGroup, "group", "g", "", "Run tasks only from a specific task group")
 	runCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for runCmd
+	runCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Simulate the execution of tasks without actually running them")
 	runCmd.Flags().BoolVar(&returnOutput, "return", false, "Return the output of the target tasks as JSON")
 
 	// Flags for list command (can reuse configFilePath, env, isProduction, shardsStr)

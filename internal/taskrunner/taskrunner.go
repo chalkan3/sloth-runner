@@ -1,8 +1,10 @@
 package taskrunner
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -11,6 +13,24 @@ import (
 	"github.com/pterm/pterm"
 	lua "github.com/yuin/gopher-lua"
 )
+
+// executeShellCondition executes a shell command and returns true if it succeeds (exit code 0).
+func executeShellCondition(command string) (bool, error) {
+	if command == "" {
+		return false, fmt.Errorf("command cannot be empty")
+	}
+	cmd := exec.Command("bash", "-c", command)
+	if err := cmd.Run(); err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			// Command executed but returned a non-zero exit code.
+			return false, nil
+		}
+		// Other error (e.g., command not found).
+		return false, err
+	}
+	// Command succeeded.
+	return true, nil
+}
 
 type TaskError struct {
 	TaskName string
@@ -54,49 +74,134 @@ type TaskRunner struct {
 	TargetTasks []string
 	Results     []TaskResult
 	Outputs     map[string]interface{}
+	DryRun      bool
 }
 
-func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string) *TaskRunner {
+func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
 		TaskGroups:  groups,
 		TargetGroup: targetGroup,
 		TargetTasks: targetTasks,
 		Outputs:     make(map[string]interface{}),
+		DryRun:      dryRun,
 	}
 }
 
-func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) (taskErr error) {
-	startTime := time.Now()
-	t.Output = tr.L.NewTable()
-
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Executing task: %s", t.Name))
-
-	defer func() {
-		duration := time.Since(startTime)
-		status := "Success"
-		if taskErr != nil {
-			status = "Failed"
-			spinner.Fail(fmt.Sprintf("Task '%s' failed: %v", t.Name, taskErr))
-		} else {
-			spinner.Success(fmt.Sprintf("Task '%s' completed successfully", t.Name))
+func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) error {
+	// AbortIf check
+	if t.AbortIfFunc != nil {
+		shouldAbort, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.AbortIfFunc, t.Params, inputFromDependencies, 1, nil)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if function: %w", err), ErrorTypeCommand)
 		}
+		if shouldAbort {
+			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if function"), ErrorTypeCommand)
+		}
+	} else if t.AbortIf != "" {
+		shouldAbort, err := executeShellCondition(t.AbortIf)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if condition: %w", err), ErrorTypeCommand)
+		}
+		if shouldAbort {
+			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if condition"), ErrorTypeCommand)
+		}
+	}
 
+	// RunIf check
+	if t.RunIfFunc != nil {
+		shouldRun, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.RunIfFunc, t.Params, inputFromDependencies, 1, nil)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if function: %w", err), ErrorTypeCommand)
+		}
+		if !shouldRun {
+			pterm.Info.Printf("Skipping task '%s' due to run_if function condition.\n", t.Name)
+			mu.Lock()
+			tr.Results = append(tr.Results, TaskResult{
+				Name:   t.Name,
+				Status: "Skipped",
+			})
+			completedTasks[t.Name] = true
+			delete(runningTasks, t.Name)
+			mu.Unlock()
+			return nil
+		}
+	} else if t.RunIf != "" {
+		shouldRun, err := executeShellCondition(t.RunIf)
+		if err != nil {
+			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if condition: %w", err), ErrorTypeCommand)
+		}
+		if !shouldRun {
+			pterm.Info.Printf("Skipping task '%s' due to run_if condition.\n", t.Name)
+			mu.Lock()
+			tr.Results = append(tr.Results, TaskResult{
+				Name:   t.Name,
+				Status: "Skipped",
+			})
+			completedTasks[t.Name] = true
+			delete(runningTasks, t.Name)
+			mu.Unlock()
+			return nil
+		}
+	}
+
+	// DryRun check
+	if tr.DryRun {
+		pterm.Info.Printf("(Dry Run) Would execute task: %s\n", t.Name)
 		mu.Lock()
 		tr.Results = append(tr.Results, TaskResult{
-			Name:     t.Name,
-			Status:   status,
-			Duration: duration,
-			Error:    taskErr,
+			Name:   t.Name,
+			Status: "DryRun",
 		})
-		taskOutputs[t.Name] = t.Output
 		completedTasks[t.Name] = true
 		delete(runningTasks, t.Name)
 		mu.Unlock()
-	}()
+		return nil
+	}
+
+	var taskErr error
+	var spinner *pterm.SpinnerPrinter
+
+	for i := 0; i <= t.Retries; i++ {
+		if i > 0 {
+			pterm.Warning.Printf("Task '%s' failed. Retrying in 1s (%d/%d)...\n", t.Name, i, t.Retries)
+			time.Sleep(1 * time.Second)
+		}
+
+		spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("Executing task: %s", t.Name))
+
+		var ctx context.Context
+		var cancel context.CancelFunc
+
+		if t.Timeout != "" {
+			timeout, err := time.ParseDuration(t.Timeout)
+			if err != nil {
+				return NewTaskError(t.Name, fmt.Errorf("invalid timeout duration: %w", err), ErrorTypeUnknown)
+			}
+			ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		} else {
+			ctx, cancel = context.WithCancel(context.Background())
+		}
+		defer cancel()
+
+		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks)
+
+		if taskErr == nil {
+			spinner.Success(fmt.Sprintf("Task '%s' completed successfully", t.Name))
+			return nil // Success
+		}
+	}
+
+	spinner.Fail(fmt.Sprintf("Task '%s' failed after %d retries: %v", t.Name, t.Retries, taskErr))
+	return taskErr // Final failure
+}
+
+func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool) (taskErr error) {
+	startTime := time.Now()
+	t.Output = tr.L.NewTable()
 
 	if t.PreExec != nil {
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2)
+		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing pre_exec hook: %w", err), ErrorTypePreExec)
 		} else if !success {
@@ -106,7 +211,7 @@ func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, 
 
 	if taskErr == nil {
 		if t.CommandFunc != nil {
-			success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3)
+			success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx)
 			if err != nil {
 				taskErr = NewTaskError(t.Name, fmt.Errorf("error executing command function: %w", err), ErrorTypeCommand)
 			} else if !success {
@@ -124,13 +229,31 @@ func (tr *TaskRunner) runTask(t *types.Task, inputFromDependencies *lua.LTable, 
 		if t.Output == nil {
 			postExecSecondArg = tr.L.NewTable()
 		}
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2)
+		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2, ctx)
 		if err != nil {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing post_exec hook: %w", err), ErrorTypePostExec)
 		} else if !success {
 			taskErr = NewTaskError(t.Name, fmt.Errorf("post-execution hook failed: %s", msg), ErrorTypePostExec)
 		}
 	}
+
+	duration := time.Since(startTime)
+	status := "Success"
+	if taskErr != nil {
+		status = "Failed"
+	}
+
+	mu.Lock()
+	tr.Results = append(tr.Results, TaskResult{
+		Name:     t.Name,
+		Status:   status,
+		Duration: duration,
+		Error:    taskErr,
+	})
+	taskOutputs[t.Name] = t.Output
+	completedTasks[t.Name] = true
+	delete(runningTasks, t.Name)
+	mu.Unlock()
 
 	return taskErr
 }
@@ -240,7 +363,7 @@ func (tr *TaskRunner) Run() error {
 						wg.Add(1)
 						go func(t *types.Task, input *lua.LTable) {
 							defer wg.Done()
-							if err := tr.runTask(t, input, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
+							if err := tr.executeTaskWithRetries(t, input, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
 								errChan <- err
 							}
 						}(task, inputFromDependencies)
@@ -248,7 +371,7 @@ func (tr *TaskRunner) Run() error {
 						mu.Lock()
 						runningTasks[task.Name] = true
 						mu.Unlock()
-						if err := tr.runTask(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
+						if err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks); err != nil {
 							errChan <- err
 						}
 					}
@@ -312,7 +435,6 @@ func (tr *TaskRunner) Run() error {
 	return nil
 }
 
-// resolveTasksToRun determines the final list of tasks to execute, including their dependencies.
 func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, targetTasks []string) ([]*types.Task, error) {
 	if len(targetTasks) == 0 {
 		var allTasks []*types.Task
@@ -358,4 +480,3 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 	}
 	return result, nil
 }
-

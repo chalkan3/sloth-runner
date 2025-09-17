@@ -15,6 +15,12 @@ type Task struct {
 	Async       bool           // Whether the task should run asynchronously
 	DependsOn   []string       // Names of the tasks this one depends on
 	Output      *lua.LTable    // Stores the output of the task after execution
+	Retries     int            // Number of times to retry a failed task
+	Timeout     string         // Timeout for the task (e.g., "30s", "1m")
+	RunIf       string         // A shell command that must succeed for the task to run
+	AbortIf     string         // A shell command that, if it succeeds, will abort the entire execution
+	RunIfFunc   *lua.LFunction // A Lua function that must return true for the task to run
+	AbortIfFunc *lua.LFunction // A Lua function that, if it returns true, will abort the entire execution
 }
 
 type TaskGroup struct {

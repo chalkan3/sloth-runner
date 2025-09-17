@@ -34,8 +34,6 @@ To help you get the most out of Sloth Runner, we've prepared detailed documentat
 -   **[Examples Guide](docs/EXAMPLES.md):** An explanation of what each of the provided examples demonstrates.
 -   **[Contributing Guide](CONTRIBUTING.md):** Guidelines for contributing to the Sloth Runner project.
 
-## Getting Started
-
 ---
 
 ## 🚀 Getting Started
@@ -102,6 +100,151 @@ TaskDefinitions = {
 
 ---
 
+## Advanced Features
+
+`sloth-runner` provides several advanced features for fine-grained control over task execution.
+
+### Task Retries and Timeouts
+
+You can make your workflows more robust by specifying retries for flaky tasks and timeouts for long-running ones.
+
+*   `retries`: The number of times to retry a task if it fails.
+*   `timeout`: A duration string (e.g., "10s", "1m") after which a task will be terminated.
+
+<details>
+<summary>Example (`examples/retries_and_timeout.lua`):</summary>
+
+```lua
+TaskDefinitions = {
+    robust_workflow = {
+        description = "A workflow to demonstrate retries and timeouts",
+        tasks = {
+            {
+                name = "flaky_task",
+                description = "This task fails 50% of the time",
+                retries = 3,
+                command = function()
+                    if math.random() < 0.5 then
+                        log.error("Simulating a random failure!")
+                        return false, "Random failure occurred"
+                    end
+                    return true, "echo 'Flaky task succeeded!'", { result = "success" }
+                end
+            },
+            {
+                name = "long_running_task",
+                description = "This task simulates a long process that will time out",
+                timeout = "2s",
+                command = "sleep 5 && echo 'This should not be printed'"
+            }
+        }
+    }
+}
+```
+</details>
+
+### Conditional Execution: `run_if` and `abort_if`
+
+You can control task execution based on conditions using `run_if` and `abort_if`. These can be either a shell command or a Lua function.
+
+*   `run_if`: The task will only be executed if the condition is met.
+*   `abort_if`: The entire execution will be aborted if the condition is met.
+
+#### Using Shell Commands
+
+The shell command is executed, and its exit code determines the outcome. A `0` exit code means the condition is met (success).
+
+<details>
+<summary>Example (`examples/conditional_execution.lua`):</summary>
+
+```lua
+TaskDefinitions = {
+    conditional_workflow = {
+        description = "A workflow to demonstrate conditional execution with run_if and abort_if.",
+        tasks = {
+            {
+                name = "check_condition_for_run",
+                description = "This task creates a file that the next task checks for.",
+                command = "touch /tmp/sloth_runner_run_condition"
+            },
+            {
+                name = "conditional_task",
+                description = "This task only runs if the condition file exists.",
+                depends_on = "check_condition_for_run",
+                run_if = "test -f /tmp/sloth_runner_run_condition",
+                command = "echo 'Conditional task is running because the condition was met.'"
+            },
+            {
+                name = "check_abort_condition",
+                description = "This task will abort if a specific file exists.",
+                abort_if = "test -f /tmp/sloth_runner_abort_condition",
+                command = "echo 'This will not run if the abort condition is met.'"
+            }
+        }
+    }
+}
+```
+</details>
+
+#### Using Lua Functions
+
+For more complex logic, you can use a Lua function. The function receives the task's `params` and the `deps` (outputs from dependencies). It must return `true` for the condition to be met.
+
+<details>
+<summary>Example (`examples/conditional_functions.lua`):</summary>
+
+```lua
+TaskDefinitions = {
+    conditional_functions_workflow = {
+        description = "A workflow to demonstrate conditional execution with Lua functions.",
+        tasks = {
+            {
+                name = "setup_task",
+                description = "This task provides output for the conditional task.",
+                command = function()
+                    return true, "Setup complete", { should_run = true }
+                end
+            },
+            {
+                name = "conditional_task_with_function",
+                description = "This task only runs if the run_if function returns true.",
+                depends_on = "setup_task",
+                run_if = function(params, deps)
+                    log.info("Checking run_if condition for conditional_task_with_function...")
+                    if deps.setup_task and deps.setup_task.should_run == true then
+                        log.info("Condition met, task will run.")
+                        return true
+                    end
+                    log.info("Condition not met, task will be skipped.")
+                    return false
+                end,
+                command = "echo 'Conditional task is running because the function returned true.'"
+            },
+            {
+                name = "abort_task_with_function",
+                description = "This task will abort the execution if the abort_if function returns true.",
+                params = {
+                    abort_execution = "true"
+                },
+                abort_if = function(params, deps)
+                    log.info("Checking abort_if condition for abort_task_with_function...")
+                    if params.abort_execution == "true" then
+                        log.info("Abort condition met, execution will stop.")
+                        return true
+                    end
+                    log.info("Abort condition not met.")
+                    return false
+                end,
+                command = "echo 'This should not be executed.'"
+            }
+        }
+    }
+}
+```
+</details>
+
+---
+
 ## 💻 CLI Commands
 
 `sloth-runner` provides a simple and powerful command-line interface.
@@ -116,6 +259,7 @@ Executes tasks defined in a Lua template file.
 *   `-t, --tasks string`: Comma-separated list of specific tasks to run.
 *   `-g, --group string`: Run tasks only from a specific task group.
 *   `-v, --values string`: Path to a YAML file with values to be passed to Lua tasks.
+*   `-d, --dry-run`: Simulate the execution of tasks without actually running them.
 
 ### `sloth-runner list`
 
