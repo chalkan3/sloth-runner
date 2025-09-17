@@ -1,0 +1,15 @@
+app:
+  name: MyAwesomeApp
+  version: 1.0.0
+  environment: development
+database:
+  host: localhost
+  port: 5432
+  user: admin
+features:
+  featureA: true
+  featureB: false
+list_of_items:
+  - item1
+  - item2
+  - item3
