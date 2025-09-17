@@ -10,7 +10,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
-	"sloth-runner/internal/types"
+	"github.com/chalkan3/sloth-runner/internal/types"
 )
 
 // ANSI color codes
