@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -35,6 +36,7 @@ var (
 	targetTasksStr string
 	targetGroup    string
 	valuesFilePath string // New: Path to a values.yaml file
+	returnOutput   bool
 )
 
 // loadAndRenderLuaConfig reads, renders, and loads Lua task definitions.
@@ -157,9 +159,19 @@ You can specify the file, environment variables, and target specific tasks or gr
 		} else {
 			// Interactive task selection
 			var allTasks []string
-			for _, group := range taskGroups {
-				for _, task := range group.Tasks {
-					allTasks = append(allTasks, task.Name)
+			if targetGroup != "" {
+				if group, ok := taskGroups[targetGroup]; ok {
+					for _, task := range group.Tasks {
+						allTasks = append(allTasks, task.Name)
+					}
+				} else {
+					return fmt.Errorf("task group '%s' not found", targetGroup)
+				}
+			} else {
+				for _, group := range taskGroups {
+					for _, task := range group.Tasks {
+						allTasks = append(allTasks, task.Name)
+					}
 				}
 			}
 
@@ -197,14 +209,39 @@ You can specify the file, environment variables, and target specific tasks or gr
 			return fmt.Errorf("error running tasks: %w", err)
 		}
 
+		if returnOutput {
+			finalOutputs := make(map[string]interface{})
+			for _, taskName := range targetTasks {
+				if output, ok := tr.Outputs[taskName]; ok {
+					finalOutputs[taskName] = output
+				}
+			}
+
+			var outputToMarshal interface{}
+			if len(targetTasks) == 1 {
+				if val, ok := finalOutputs[targetTasks[0]]; ok {
+					outputToMarshal = val
+				} else {
+					outputToMarshal = make(map[string]interface{})
+				}
+			} else {
+				outputToMarshal = finalOutputs
+			}
+
+			jsonOutput, err := json.Marshal(outputToMarshal)
+			if err != nil {
+				return fmt.Errorf("error marshaling final task output to JSON: %w", err)
+			}
+			fmt.Println(string(jsonOutput))
+		}
+
 		return nil
 	},
 }
-
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
-	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`, 
+	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -264,6 +301,7 @@ func init() {
 	runCmd.Flags().StringVarP(&targetTasksStr, "tasks", "t", "", "Comma-separated list of specific tasks to run (e.g., task1,task2)")
 	runCmd.Flags().StringVarP(&targetGroup, "group", "g", "", "Run tasks only from a specific task group")
 	runCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for runCmd
+	runCmd.Flags().BoolVar(&returnOutput, "return", false, "Return the output of the target tasks as JSON")
 
 	// Flags for list command (can reuse configFilePath, env, isProduction, shardsStr)
 	listCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
