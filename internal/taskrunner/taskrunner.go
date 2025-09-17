@@ -53,6 +53,7 @@ type TaskRunner struct {
 	TargetGroup string
 	TargetTasks []string
 	Results     []TaskResult
+	Outputs     map[string]interface{}
 }
 
 func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string) *TaskRunner {
@@ -61,6 +62,7 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 		TaskGroups:  groups,
 		TargetGroup: targetGroup,
 		TargetTasks: targetTasks,
+		Outputs:     make(map[string]interface{}),
 	}
 }
 
@@ -283,6 +285,12 @@ func (tr *TaskRunner) Run() error {
 		if len(groupErrors) > 0 {
 			allGroupErrors = append(allGroupErrors, fmt.Errorf("task group '%s' encountered errors: %v", groupName, groupErrors))
 		}
+
+		mu.Lock()
+		for taskName, outputTable := range taskOutputs {
+			tr.Outputs[taskName] = luainterface.LuaTableToGoMap(tr.L, outputTable)
+		}
+		mu.Unlock()
 	}
 
 	pterm.DefaultSection.Println("Execution Summary")
@@ -318,22 +326,11 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 	queue := make([]string, 0, len(targetTasks))
 	visited := make(map[string]bool)
 
-	var actualTargetTasksInGroup []string
 	for _, taskName := range targetTasks {
-		if _, ok := originalTaskMap[taskName]; ok {
-			actualTargetTasksInGroup = append(actualTargetTasksInGroup, taskName)
-		} else {
-			log.Println("Warning: Targeted task '" + taskName + "' not found in group. Skipping for this group.")
+		if !visited[taskName] {
+			queue = append(queue, taskName)
+			visited[taskName] = true
 		}
-	}
-
-	if len(actualTargetTasksInGroup) == 0 {
-		return []*types.Task{}, nil
-	}
-
-	for _, taskName := range actualTargetTasksInGroup {
-		queue = append(queue, taskName)
-		visited[taskName] = true
 	}
 
 	head := 0
@@ -341,13 +338,13 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 		currentTaskName := queue[head]
 		head++
 
-		currentTask := originalTaskMap[currentTaskName]
+		currentTask, ok := originalTaskMap[currentTaskName]
+		if !ok {
+			return nil, fmt.Errorf("task '%s' not found in group", currentTaskName)
+		}
 		resolved[currentTaskName] = currentTask
 
 		for _, depName := range currentTask.DependsOn {
-			if _, ok := originalTaskMap[depName]; !ok {
-				return nil, fmt.Errorf("dependency '%s' for task '%s' not found in group", depName, currentTaskName)
-			}
 			if !visited[depName] {
 				visited[depName] = true
 				queue = append(queue, depName)
