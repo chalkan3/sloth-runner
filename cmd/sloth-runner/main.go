@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/AlecAivazis/survey/v2"
 	lua "github.com/yuin/gopher-lua"
 
 	"github.com/spf13/cobra"
@@ -35,6 +37,7 @@ var (
 	targetGroup    string
 	valuesFilePath string // New: Path to a values.yaml file
 	dryRun         bool
+	returnOutput   bool
 )
 
 // loadAndRenderLuaConfig reads, renders, and loads Lua task definitions.
@@ -148,42 +151,95 @@ You can specify the file, environment variables, and target specific tasks or gr
 			return err
 		}
 
-		// Parse target tasks string into a slice
 		var targetTasks []string
 		if targetTasksStr != "" {
 			targetTasks = strings.Split(targetTasksStr, ",")
 			for i, task := range targetTasks {
 				targetTasks[i] = strings.TrimSpace(task)
 			}
+		} else {
+			// Interactive task selection
+			var allTasks []string
+			if targetGroup != "" {
+				if group, ok := taskGroups[targetGroup]; ok {
+					for _, task := range group.Tasks {
+						allTasks = append(allTasks, task.Name)
+					}
+				} else {
+					return fmt.Errorf("task group '%s' not found", targetGroup)
+				}
+			} else {
+				for _, group := range taskGroups {
+					for _, task := range group.Tasks {
+						allTasks = append(allTasks, task.Name)
+					}
+				}
+			}
+
+			if len(allTasks) == 0 {
+				fmt.Println("No tasks found to run.")
+				return nil
+			}
+
+			prompt := &survey.MultiSelect{
+				Message: "Select tasks to run:",
+				Options: allTasks,
+			}
+			survey.AskOne(prompt, &targetTasks)
 		}
 
-		// Create a new Lua state for the TaskRunner (it needs its own state for execution)
-		// This is a separate state from the one used in loadAndRenderLuaConfig
+		if len(targetTasks) == 0 {
+			fmt.Println("No tasks selected.")
+			return nil
+		}
+
+		// Create a new Lua state for the TaskRunner
 		L := lua.NewState()
 		defer L.Close()
 
-		// Open the necessary libraries for the TaskRunner's Lua state
 		luainterface.OpenExec(L)
 		luainterface.OpenFs(L)
 		luainterface.OpenNet(L)
 		luainterface.OpenData(L)
 		luainterface.OpenLog(L)
-		luainterface.OpenSalt(L) // Ensure salt is opened for the runner's Lua state
+		luainterface.OpenSalt(L)
 
 		// Create a new TaskRunner instance
 		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
 
-		// Run the tasks
 		if err := tr.Run(); err != nil {
 			return fmt.Errorf("error running tasks: %w", err)
 		}
 
-		fmt.Println("---")
-		fmt.Println("All Tasks Executed")
+		if returnOutput {
+			finalOutputs := make(map[string]interface{})
+			for _, taskName := range targetTasks {
+				if output, ok := tr.Outputs[taskName]; ok {
+					finalOutputs[taskName] = output
+				}
+			}
+
+			var outputToMarshal interface{}
+			if len(targetTasks) == 1 {
+				if val, ok := finalOutputs[targetTasks[0]]; ok {
+					outputToMarshal = val
+				} else {
+					outputToMarshal = make(map[string]interface{})
+				}
+			} else {
+				outputToMarshal = finalOutputs
+			}
+
+			jsonOutput, err := json.Marshal(outputToMarshal)
+			if err != nil {
+				return fmt.Errorf("error marshaling final task output to JSON: %w", err)
+			}
+			fmt.Println(string(jsonOutput))
+		}
+
 		return nil
 	},
 }
-
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
@@ -219,9 +275,25 @@ var listCmd = &cobra.Command{
 	},
 }
 
+var validateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validates the syntax and structure of a Lua task file",
+	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`, 
+	RunE: func(cmd *cobra.Command, args []string) error {
+		_, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("✅ Configuration file is valid.")
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(validateCmd)
 
 	// Define flags for the run command
 	runCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
@@ -232,6 +304,7 @@ func init() {
 	runCmd.Flags().StringVarP(&targetGroup, "group", "g", "", "Run tasks only from a specific task group")
 	runCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for runCmd
 	runCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Simulate the execution of tasks without actually running them")
+	runCmd.Flags().BoolVar(&returnOutput, "return", false, "Return the output of the target tasks as JSON")
 
 	// Flags for list command (can reuse configFilePath, env, isProduction, shardsStr)
 	listCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
@@ -239,6 +312,13 @@ func init() {
 	listCmd.Flags().BoolVarP(&isProduction, "prod", "p", false, "Set to true for production environment")
 	listCmd.Flags().StringVar(&shardsStr, "shards", "1,2,3", "Comma-separated list of shard numbers (e.g., 1,2,3)")
 	listCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for listCmd
+
+	// Flags for validate command
+	validateCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
+	validateCmd.Flags().StringVarP(&env, "env", "e", "Development", "Environment for the tasks (e.g., Development, Production)")
+	validateCmd.Flags().BoolVarP(&isProduction, "prod", "p", false, "Set to true for production environment")
+	validateCmd.Flags().StringVar(&shardsStr, "shards", "1,2,3", "Comma-separated list of shard numbers (e.g., 1,2,3)")
+	validateCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks")
 }
 
 func main() {

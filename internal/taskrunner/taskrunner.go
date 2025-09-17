@@ -32,7 +32,6 @@ func executeShellCondition(command string) (bool, error) {
 	return true, nil
 }
 
-
 type TaskError struct {
 	TaskName string
 	Err      error
@@ -481,5 +480,3 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 	}
 	return result, nil
 }
-
-
