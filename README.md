@@ -24,6 +24,18 @@ A flexible and extensible task runner application written in Go, powered by Lua 
     *   `run`: Execute tasks from a Lua configuration file.
     *   `list`: List all available task groups and tasks with their descriptions and dependencies.
 
+
+## 📚 Documentation
+
+To help you get the most out of Sloth Runner, we've prepared detailed documentation:
+
+-   **[Getting Started Tutorial](docs/TUTORIAL.md):** A step-by-step guide to creating your first tasks.
+-   **[Lua API Reference](docs/LUA_API.md):** Detailed documentation for all the available Lua modules (`fs`, `net`, `exec`, etc.).
+-   **[Examples Guide](docs/EXAMPLES.md):** An explanation of what each of the provided examples demonstrates.
+-   **[Contributing Guide](CONTRIBUTING.md):** Guidelines for contributing to the Sloth Runner project.
+
+## Getting Started
+
 ---
 
 ## 🚀 Getting Started
