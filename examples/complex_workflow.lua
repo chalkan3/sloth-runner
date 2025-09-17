@@ -92,6 +92,7 @@ TaskDefinitions = {
                 async = false, -- This task is synchronous
                 pre_exec = function(params, input_from_dependency)
                     print("Lua Hook: generate_report preparing. Staging ID: " .. (input_from_dependency.load_to_staging.staging_id or "N/A") .. ", Enriched Info: " .. (input_from_dependency.enrich_data.enriched_info or "N/A"))
+                    return true, "pre_exec successful"
                 end,
             }
         }
