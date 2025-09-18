@@ -15,5 +15,4 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Exemplos Avançados](./advanced-examples.md)
 
 ---
-**Idiomas Disponíveis:**
 [English](../en/index.md) | [Português](./index.md) | [中文](../zh/index.md)

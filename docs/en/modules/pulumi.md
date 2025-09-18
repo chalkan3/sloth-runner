@@ -159,5 +159,4 @@ TaskDefinitions = {
 ```
 
 ---
-**Available Languages:**
 [English](./pulumi.md) | [Português](../../pt/modules/pulumi.md) | [中文](../../zh/modules/pulumi.md)
