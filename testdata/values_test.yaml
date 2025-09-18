@@ -1,0 +1,5 @@
+
+# testdata/values_test.yaml
+message: "Hello from values!"
+nested:
+  key: "value"

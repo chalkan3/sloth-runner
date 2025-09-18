@@ -43,24 +43,17 @@ func (e *TaskExecutionError) Error() string {
 	return fmt.Sprintf("task '%s' failed: %v", e.TaskName, e.Err)
 }
 
-// TaskResult holds the outcome of a single task execution.
-type TaskResult struct {
-	Name     string
-	Status   string
-	Duration time.Duration
-	Error    error
-}
+
 
 type TaskRunner struct {
 	L           *lua.LState
 	TaskGroups  map[string]types.TaskGroup
 	TargetGroup string
 	TargetTasks []string
-	Results     []TaskResult
+	Results     []types.TaskResult
 	Outputs     map[string]interface{}
 	DryRun      bool
 }
-
 
 func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool) *TaskRunner {
 	return &TaskRunner{
@@ -102,7 +95,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		if !shouldRun {
 			pterm.Info.Printf("Skipping task '%s' due to run_if function condition.\n", t.Name)
 			mu.Lock()
-			tr.Results = append(tr.Results, TaskResult{
+			tr.Results = append(tr.Results, types.TaskResult{
 				Name:   t.Name,
 				Status: "Skipped",
 			})
@@ -119,7 +112,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		if !shouldRun {
 			pterm.Info.Printf("Skipping task '%s' due to run_if condition.\n", t.Name)
 			mu.Lock()
-			tr.Results = append(tr.Results, TaskResult{
+			tr.Results = append(tr.Results, types.TaskResult{
 				Name:   t.Name,
 				Status: "Skipped",
 			})
@@ -183,7 +176,7 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 		}
 
 		mu.Lock()
-		tr.Results = append(tr.Results, TaskResult{
+		tr.Results = append(tr.Results, types.TaskResult{
 			Name:     t.Name,
 			Status:   status,
 			Duration: duration,
@@ -310,6 +303,7 @@ func (tr *TaskRunner) Run() error {
 				mu.Unlock()
 
 				dependencyMet := true
+				// Check 'depends_on' dependencies
 				for _, depName := range task.DependsOn {
 					if _, exists := taskMap[depName]; exists {
 						mu.Lock()
@@ -317,7 +311,6 @@ func (tr *TaskRunner) Run() error {
 						if !completed {
 							dependencyMet = false
 						} else {
-							// Check if the completed dependency was successful
 							var depSuccess bool
 							for _, res := range tr.Results {
 								if res.Name == depName && res.Error == nil {
@@ -327,14 +320,12 @@ func (tr *TaskRunner) Run() error {
 							}
 							if !depSuccess {
 								dependencyMet = false
-								// Mark this task as skipped since its dependency failed
-								tr.Results = append(tr.Results, TaskResult{
-									Name:   task.Name,
-									Status: "Skipped",
-									Error:  fmt.Errorf("dependency '%s' failed", depName),
-								})
-								completedTasks[task.Name] = true // Mark as completed to unblock the loop
-							}
+								                                tr.Results = append(tr.Results, types.TaskResult{
+								                                    Name:   task.Name,
+								                                    Status: "Skipped",
+								                                    Error:  fmt.Errorf("dependency '%s' failed", depName),
+								                                })
+								                                completedTasks[task.Name] = true							}
 						}
 						mu.Unlock()
 						if !dependencyMet {
@@ -343,10 +334,63 @@ func (tr *TaskRunner) Run() error {
 					}
 				}
 
+				// Check 'next_if_fail' dependencies only if 'depends_on' are met
+				if dependencyMet && len(task.NextIfFail) > 0 {
+					nextIfFailMet := false
+					allNextIfFailCompleted := true
+					for _, depName := range task.NextIfFail {
+						if _, exists := taskMap[depName]; exists {
+							mu.Lock()
+							completed := completedTasks[depName]
+							if !completed {
+								allNextIfFailCompleted = false
+							} else {
+								var depFailed bool
+								for _, res := range tr.Results {
+									if res.Name == depName && res.Error != nil {
+										depFailed = true
+										break
+									}
+								}
+								if depFailed {
+									nextIfFailMet = true
+								}
+							}
+							mu.Unlock()
+						}
+					}
+
+					if !allNextIfFailCompleted {
+						dependencyMet = false
+					} else if !nextIfFailMet {
+						dependencyMet = false
+						mu.Lock()
+						tr.Results = append(tr.Results, types.TaskResult{
+							Name:   task.Name,
+							Status: "Skipped",
+							Error:  fmt.Errorf("none of the next_if_fail dependencies for '%s' failed", task.Name),
+						})
+						completedTasks[task.Name] = true
+						mu.Unlock()
+					}
+				}
+
 				if dependencyMet {
 					tasksLaunchedThisIteration++
 					inputFromDependencies := tr.L.NewTable()
 					for _, depName := range task.DependsOn {
+						if _, exists := taskMap[depName]; exists {
+							mu.Lock()
+							depOutput := taskOutputs[depName]
+							mu.Unlock()
+							if depOutput != nil {
+								inputFromDependencies.RawSetString(depName, depOutput)
+							} else {
+								inputFromDependencies.RawSetString(depName, tr.L.NewTable())
+							}
+						}
+					}
+					for _, depName := range task.NextIfFail {
 						if _, exists := taskMap[depName]; exists {
 							mu.Lock()
 							depOutput := taskOutputs[depName]
@@ -441,7 +485,6 @@ func (tr *TaskRunner) Run() error {
 	}
 	return nil
 }
-
 func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, targetTasks []string) ([]*types.Task, error) {
 	if len(targetTasks) == 0 {
 		var allTasks []*types.Task
@@ -486,4 +529,71 @@ func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, 
 		result = append(result, task)
 	}
 	return result, nil
+}
+
+// RunTasksParallel executes a slice of tasks concurrently and waits for them to complete.
+func (tr *TaskRunner) RunTasksParallel(tasks []*types.Task, input *lua.LTable) ([]types.TaskResult, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	
+	resultsChan := make(chan types.TaskResult, len(tasks))
+	errChan := make(chan error, len(tasks))
+
+	for _, task := range tasks {
+		wg.Add(1)
+		go func(t *types.Task) {
+			defer wg.Done()
+			
+			// These maps are for the context of a single parallel execution, not the whole runner
+			completed := make(map[string]bool)
+			outputs := make(map[string]*lua.LTable)
+			running := make(map[string]bool)
+			
+			// We use a new mutex for the retry logic within the task execution
+			var taskMu sync.Mutex
+
+			err := tr.executeTaskWithRetries(t, input, &taskMu, completed, outputs, running)
+			
+			// Find the result for this specific task. executeTaskWithRetries appends to tr.Results.
+			// This is a bit of a workaround due to the existing structure.
+			// A better long-term solution would be for executeTaskWithRetries to return the TaskResult.
+			mu.Lock()
+			var result types.TaskResult
+			// Search from the end of the results slice as it's the most likely place
+			for i := len(tr.Results) - 1; i >= 0; i-- {
+				if tr.Results[i].Name == t.Name {
+					result = tr.Results[i]
+					break
+				}
+			}
+			mu.Unlock()
+
+			if err != nil {
+				errChan <- err
+			}
+			resultsChan <- result
+
+		}(task)
+	}
+
+	wg.Wait()
+	close(resultsChan)
+	close(errChan)
+
+	var allErrors []error
+	for err := range errChan {
+		allErrors = append(allErrors, err)
+	}
+
+	var results []types.TaskResult
+	for result := range resultsChan {
+		results = append(results, result)
+	}
+
+	if len(allErrors) > 0 {
+		// Combine multiple errors into one
+		return results, fmt.Errorf("encountered %d errors during parallel execution: %v", len(allErrors), allErrors)
+	}
+
+	return results, nil
 }

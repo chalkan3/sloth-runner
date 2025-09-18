@@ -42,7 +42,7 @@ var (
 )
 
 // loadAndRenderLuaConfig reads, renders, and loads Lua task definitions.
-func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction bool, valuesFilePath string) (map[string]types.TaskGroup, error) {
+func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string, isProduction bool, valuesFilePath string, tr types.TaskRunner) (map[string]types.TaskGroup, error) {
 	// Read the Lua template file
 	templateContent, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
@@ -81,10 +81,6 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 		return nil, fmt.Errorf("error executing Lua template: %w", err)
 	}
 
-	// Create a new Lua state
-	L := lua.NewState()
-	defer L.Close()
-
 	// Open the 'exec' library for shell command execution
 	luainterface.OpenExec(L)
 
@@ -103,8 +99,17 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 	// Open the 'salt' library for SaltStack operations
 	luainterface.OpenSalt(L)
 
+	// Open the 'pulumi' library for Pulumi operations (NEW)
+	luainterface.OpenPulumi(L)
+
+	// Open the 'git' library for Git operations (NEW)
+	luainterface.OpenGit(L)
+
 	// Open the 'import' function for importing other Lua files
 	luainterface.OpenImport(L, configFilePath)
+
+	// Open the 'parallel' function, passing the task runner instance
+	luainterface.OpenParallel(L, tr)
 
 	// --- New: Load and expose values.yaml to Lua ---
 	if valuesFilePath != "" {
@@ -148,111 +153,112 @@ var runCmd = &cobra.Command{
 	Short: "Executes tasks defined in a Lua template file",
 	Long: `The run command executes tasks defined in a Lua template file.
 
-You can specify the file, environment variables, and target specific tasks or groups.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
-		if err != nil {
-			return err
-		}
+You can specify the file, environment variables, and target specific tasks or groups.`, 
+		RunE: func(cmd *cobra.Command, args []string) error {
+			L := lua.NewState()
+			defer L.Close()
 
-		var targetTasks []string
-		if targetTasksStr != "" {
-			targetTasks = strings.Split(targetTasksStr, ",")
-			for i, task := range targetTasks {
-				targetTasks[i] = strings.TrimSpace(task)
+			// Create a dummy TaskRunner for initial Lua config loading. The real one will be created later.
+			// This is necessary because OpenParallel is called within loadAndRenderLuaConfig.
+			// The actual TaskRunner instance will be passed to OpenParallel again after it's fully initialized.
+			var dummyTr types.TaskRunner = nil
+
+			taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
+			if err != nil {
+				return err
 			}
-		} else {
-			var allTasks []string
-			if targetGroup != "" {
-				if group, ok := taskGroups[targetGroup]; ok {
-					for _, task := range group.Tasks {
-						allTasks = append(allTasks, task.Name)
-					}
-				} else {
-					return fmt.Errorf("task group '%s' not found", targetGroup)
+	
+			var targetTasks []string
+			if targetTasksStr != "" {
+				targetTasks = strings.Split(targetTasksStr, ",")
+				for i, task := range targetTasks {
+					targetTasks[i] = strings.TrimSpace(task)
 				}
 			} else {
-				for _, group := range taskGroups {
-					for _, task := range group.Tasks {
-						allTasks = append(allTasks, task.Name)
+				var allTasks []string
+				if targetGroup != "" {
+					if group, ok := taskGroups[targetGroup]; ok {
+						for _, task := range group.Tasks {
+							allTasks = append(allTasks, task.Name)
+						}
+					} else {
+						return fmt.Errorf("task group '%s' not found", targetGroup)
+					}
+				} else {
+					for _, group := range taskGroups {
+						for _, task := range group.Tasks {
+							allTasks = append(allTasks, task.Name)
+						}
 					}
 				}
+	
+				if len(allTasks) == 0 {
+					fmt.Println("No tasks found to run.")
+					return nil
+				}
+	
+				if yes {
+					targetTasks = allTasks
+				} else {
+					prompt := &survey.MultiSelect{
+						Message: "Select tasks to run:",
+						Options: allTasks,
+					}
+					survey.AskOne(prompt, &targetTasks)
+				}
 			}
-
-			if len(allTasks) == 0 {
-				fmt.Println("No tasks found to run.")
+	
+			if len(targetTasks) == 0 {
+				fmt.Println("No tasks selected.")
 				return nil
 			}
-
-			if yes {
-				targetTasks = allTasks
-			} else {
-				prompt := &survey.MultiSelect{
-					Message: "Select tasks to run:",
-					Options: allTasks,
-				}
-				survey.AskOne(prompt, &targetTasks)
+	
+			// Create a new TaskRunner instance
+			tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
+	
+			// Re-open the 'parallel' function with the actual task runner instance
+			luainterface.OpenParallel(L, tr)
+	
+			if err := tr.Run(); err != nil {
+				return fmt.Errorf("error running tasks: %w", err)
 			}
-		}
-
-		if len(targetTasks) == 0 {
-			fmt.Println("No tasks selected.")
-			return nil
-		}
-
-		// Create a new Lua state for the TaskRunner
-		L := lua.NewState()
-		defer L.Close()
-
-		luainterface.OpenExec(L)
-		luainterface.OpenFs(L)
-		luainterface.OpenNet(L)
-		luainterface.OpenData(L)
-		luainterface.OpenLog(L)
-		luainterface.OpenSalt(L)
-
-		// Create a new TaskRunner instance
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
-
-		if err := tr.Run(); err != nil {
-			return fmt.Errorf("error running tasks: %w", err)
-		}
-
-		if returnOutput {
-			finalOutputs := make(map[string]interface{})
-			for _, taskName := range targetTasks {
-				if output, ok := tr.Outputs[taskName]; ok {
-					finalOutputs[taskName] = output
+	
+			if returnOutput {
+				finalOutputs := make(map[string]interface{})
+				for _, taskName := range targetTasks {
+					if output, ok := tr.Outputs[taskName]; ok {
+						finalOutputs[taskName] = output
+					}
 				}
-			}
-
-			var outputToMarshal interface{}
-			if len(targetTasks) == 1 {
-				if val, ok := finalOutputs[targetTasks[0]]; ok {
-					outputToMarshal = val
+	
+				var outputToMarshal interface{}
+				if len(targetTasks) == 1 {
+					if val, ok := finalOutputs[targetTasks[0]]; ok {
+						outputToMarshal = val
+					} else {
+						outputToMarshal = make(map[string]interface{})
+					}
 				} else {
-					outputToMarshal = make(map[string]interface{})
+					outputToMarshal = finalOutputs
 				}
-			} else {
-				outputToMarshal = finalOutputs
+	
+				jsonOutput, err := json.Marshal(outputToMarshal)
+				if err != nil {
+					return fmt.Errorf("error marshaling final task output to JSON: %w", err)
+				}
+				fmt.Println(string(jsonOutput))
 			}
-
-			jsonOutput, err := json.Marshal(outputToMarshal)
-			if err != nil {
-				return fmt.Errorf("error marshaling final task output to JSON: %w", err)
-			}
-			fmt.Println(string(jsonOutput))
-		}
-
-		return nil
-	},
-}
+	
+			return nil
+		},}
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
-	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`,
+	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
+		L := lua.NewState()
+		defer L.Close()
+		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
 		if err != nil {
 			return err
 		}
@@ -285,9 +291,11 @@ var listCmd = &cobra.Command{
 var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validates the syntax and structure of a Lua task file",
-	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`,
+	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
+		L := lua.NewState()
+		defer L.Close()
+		_, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
 		if err != nil {
 			return err
 		}
