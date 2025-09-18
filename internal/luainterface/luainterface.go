@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec" // Added for executing shell commands
+	"path/filepath"
 	"strings"
 
 	lua "github.com/yuin/gopher-lua"
@@ -18,6 +19,39 @@ import (
 
 	"github.com/chalkan3/sloth-runner/internal/types"
 )
+
+// newLuaImportFunction creates a Lua function that can import other Lua files.
+// The baseDir is the directory of the file that is calling the import function.
+func newLuaImportFunction(baseDir string) lua.LGFunction {
+	return func(L *lua.LState) int {
+		// Get the relative path of the module to import
+		relPath := L.CheckString(1)
+		absPath := filepath.Join(baseDir, relPath)
+
+		// Read the content of the imported file
+		content, err := ioutil.ReadFile(absPath)
+		if err != nil {
+			L.RaiseError("cannot read imported file: %s", err.Error())
+			return 0
+		}
+
+		// Execute the imported Lua script. It's expected to return a value (e.g., the TaskDefinitions table).
+		if err := L.DoString(string(content)); err != nil {
+			L.RaiseError("error executing imported file: %s", err.Error())
+			return 0
+		}
+
+		// The return value of the script is on the stack, so we just need to return 1 value.
+		return 1
+	}
+}
+
+// OpenImport opens the 'import' function to the Lua state.
+func OpenImport(L *lua.LState, configFilePath string) {
+	baseDir := filepath.Dir(configFilePath)
+	L.SetGlobal("import", L.NewFunction(newLuaImportFunction(baseDir)))
+}
+
 
 // GoValueToLua converts a Go interface{} value to a Lua LValue.
 func GoValueToLua(L *lua.LState, value interface{}) lua.LValue {
@@ -662,60 +696,50 @@ func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]stri
 	// We expect at least 2 return values (status, message) and optionally a third (output table)
 	// nRet specifies the number of results to push onto the stack.
 	// If nRet is 0, no results are pushed. If nRet is lua.MultRet, all results are pushed.
-	if err := L.PCall(numArgs, nRet, nil); err != nil {
+	if err := L.PCall(numArgs, lua.MultRet, nil); err != nil {
 		return false, "", nil, fmt.Errorf("error executing Lua function: %w", err)
 	}
 
-	// Pop results from the stack.
-	// The results are on the stack in the order they were returned by Lua.
-	// So, if Lua returns (success, message, output), they are on stack as success, message, output.
-	// We need to pop them in reverse order of how we want to process them.
+	// After PCall, results are on the stack. Let's get them safely.
+	top := L.GetTop()
 
 	var success bool
 	var message string
 	var outputTable *lua.LTable
 
-	// Get output table (if nRet allows for it and it's present)
-	if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTTable {
-		outputTable = L.Get(-1).(*lua.LTable)
-		L.Pop(1)
-	} else if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects an output table but it's not a table or nil, something is wrong
-		return false, fmt.Sprintf("unexpected third return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 3 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	// The return values are in order: success, message, outputTable
+	// We check them from first to last, based on what's available on the stack.
+	if top >= 1 {
+		if L.Get(1).Type() == lua.LTBool {
+			success = lua.LVAsBool(L.Get(1))
+		} else {
+			// If the first return value isn't a boolean, we can't determine success.
+			// We'll default to false and try to construct a meaningful error message.
+			success = false
+			message = fmt.Sprintf("unexpected first return type from Lua: %s", L.Get(1).Type().String())
+		}
 	}
 
-
-	// Get message (if nRet allows for it and it's present)
-	if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTString {
-		message = lua.LVAsString(L.Get(-1))
-		L.Pop(1)
-	} else if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects a message but it's not a string or nil, something is wrong
-		return false, fmt.Sprintf("unexpected second return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 2 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	if top >= 2 {
+		if L.Get(2).Type() == lua.LTString {
+			message = lua.LVAsString(L.Get(2))
+		}
 	}
 
-
-	// Get success (if nRet allows for it and it's present)
-	if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTBool {
-		success = lua.LVAsBool(L.Get(-1))
-		L.Pop(1)
-	} else if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() != lua.LTNil {
-		// If nRet expects a success but it's not a bool or nil, something is wrong
-		return false, fmt.Sprintf("unexpected first return type from Lua: %s", L.Get(-1).String()), nil, nil
-	} else if nRet >= 1 && L.GetTop() >= 1 && L.Get(-1).Type() == lua.LTNil {
-		L.Pop(1) // Pop the nil if it was expected but not provided
+	if top >= 3 {
+		if L.Get(3).Type() == lua.LTTable {
+			outputTable = L.Get(3).(*lua.LTable)
+		}
 	}
 
+	// Clean up the stack
+	L.SetTop(0)
 
 	return success, message, outputTable, nil
 }
 
 // LoadTaskDefinitions loads Lua script content and parses the task definitions.
-func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]types.TaskGroup, error) {
+func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath string) (map[string]types.TaskGroup, error) {
 	// Load the Lua script content. This will populate the global TaskDefinitions table in Lua.
 	if err := L.DoString(luaScriptContent); err != nil {
 		return nil, fmt.Errorf("error loading Lua script content: %w", err)
@@ -751,110 +775,50 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 				}
 				taskTable := taskValue.(*lua.LTable)
 
-				name := taskTable.RawGetString("name").String()
-				desc := taskTable.RawGetString("description").String()
+				var finalTask types.Task
+				
+				usesField := taskTable.RawGetString("uses")
+				if usesField.Type() == lua.LTTable {
+					// This is a reusable task, merge it with local overrides
+					baseTaskTable := usesField.(*lua.LTable)
+					baseTask := parseLuaTask(baseTaskTable)
+					
+					// Now, override with local values
+					localOverrides := parseLuaTask(taskTable)
+					
+					finalTask = baseTask
+					if localOverrides.Description != "" { finalTask.Description = localOverrides.Description }
+					if localOverrides.CommandFunc != nil { finalTask.CommandFunc = localOverrides.CommandFunc }
+					if localOverrides.CommandStr != "" { finalTask.CommandStr = localOverrides.CommandStr }
+					if localOverrides.PreExec != nil { finalTask.PreExec = localOverrides.PreExec }
+					if localOverrides.PostExec != nil { finalTask.PostExec = localOverrides.PostExec }
+					if localOverrides.Async { finalTask.Async = localOverrides.Async }
+					if len(localOverrides.DependsOn) > 0 { finalTask.DependsOn = localOverrides.DependsOn }
+					if localOverrides.Retries > 0 { finalTask.Retries = localOverrides.Retries }
+					if localOverrides.Timeout != "" { finalTask.Timeout = localOverrides.Timeout }
+					if localOverrides.RunIf != "" { finalTask.RunIf = localOverrides.RunIf }
+					if localOverrides.AbortIf != "" { finalTask.AbortIf = localOverrides.AbortIf }
+					if localOverrides.RunIfFunc != nil { finalTask.RunIfFunc = localOverrides.RunIfFunc }
+					if localOverrides.AbortIfFunc != nil { finalTask.AbortIfFunc = localOverrides.AbortIfFunc }
 
-				var cmdFunc *lua.LFunction
-				var cmdStr string
-				luaCommand := taskTable.RawGetString("command")
-				if luaCommand.Type() == lua.LTString {
-					cmdStr = luaCommand.String()
-				} else if luaCommand.Type() == lua.LTFunction {
-					cmdFunc = luaCommand.(*lua.LFunction)
-				}
-
-				params := make(map[string]string)
-				luaParams := taskTable.RawGetString("params")
-				if luaParams.Type() == lua.LTTable {
-					luaParams.(*lua.LTable).ForEach(func(paramKey, paramValue lua.LValue) {
-						params[paramKey.String()] = paramValue.String()
-					})
-				}
-
-				var preExecFunc *lua.LFunction
-				luaPreExec := taskTable.RawGetString("pre_exec")
-				if luaPreExec.Type() == lua.LTFunction {
-					preExecFunc = luaPreExec.(*lua.LFunction)
-				}
-
-				var postExecFunc *lua.LFunction
-				luaPostExec := taskTable.RawGetString("post_exec")
-				if luaPostExec.Type() == lua.LTFunction {
-					postExecFunc = luaPostExec.(*lua.LFunction)
-				}
-
-				async := false
-				luaAsync := taskTable.RawGetString("async")
-				if luaAsync.Type() == lua.LTBool {
-					async = luaAsync.(lua.LBool).String() == "true"
-				}
-
-				var dependsOn []string
-				luaDependsOn := taskTable.RawGetString("depends_on")
-				if luaDependsOn.Type() == lua.LTString {
-					dependsOn = []string{luaDependsOn.String()}
-				} else if luaDependsOn.Type() == lua.LTTable {
-					luaDependsOn.(*lua.LTable).ForEach(func(depKey, depValue lua.LValue) {
-						if depValue.Type() == lua.LTString {
-							dependsOn = append(dependsOn, depValue.String())
-						} else {
-							log.Printf("Warning: Non-string dependency found in depends_on table for task '%s'. Skipping.", name)
+					// Merge params tables
+					if len(localOverrides.Params) > 0 {
+						if finalTask.Params == nil {
+							finalTask.Params = make(map[string]string)
 						}
-					})
-				} else if luaDependsOn.Type() == lua.LTNil {
-					dependsOn = []string{} // No dependencies
+						for k, v := range localOverrides.Params {
+							finalTask.Params[k] = v
+						}
+					}
+					// The name is taken from the key in the tasks table
+					finalTask.Name = taskKey.String()
+
 				} else {
-					log.Printf("Warning: Unexpected type for depends_on field for task '%s'. Expected string or table, got %s. Treating as no dependencies.", name, luaDependsOn.Type().String())
-					dependsOn = []string{}
+					// It's a regular, self-contained task definition
+					finalTask = parseLuaTask(taskTable)
 				}
-
-				retries := 0
-				luaRetries := taskTable.RawGetString("retries")
-				if luaRetries.Type() == lua.LTNumber {
-					retries = int(lua.LVAsNumber(luaRetries))
-				}
-
-				timeout := ""
-				luaTimeout := taskTable.RawGetString("timeout")
-				if luaTimeout.Type() == lua.LTString {
-					timeout = lua.LVAsString(luaTimeout)
-				}
-
-				runIf := ""
-				var runIfFunc *lua.LFunction
-				luaRunIf := taskTable.RawGetString("run_if")
-				if luaRunIf.Type() == lua.LTString {
-					runIf = lua.LVAsString(luaRunIf)
-				} else if luaRunIf.Type() == lua.LTFunction {
-					runIfFunc = luaRunIf.(*lua.LFunction)
-				}
-
-				abortIf := ""
-				var abortIfFunc *lua.LFunction
-				luaAbortIf := taskTable.RawGetString("abort_if")
-				if luaAbortIf.Type() == lua.LTString {
-					abortIf = lua.LVAsString(luaAbortIf)
-				} else if luaAbortIf.Type() == lua.LTFunction {
-					abortIfFunc = luaAbortIf.(*lua.LFunction)
-				}
-
-				tasks = append(tasks, types.Task{
-					Name:        name,
-					Description: desc,
-					CommandFunc: cmdFunc,
-					CommandStr:  cmdStr,
-					Params:      params,
-					PreExec:     preExecFunc,
-					PostExec:    postExecFunc,
-					Async:       async,
-					DependsOn:   dependsOn,
-					Retries:     retries,
-					Timeout:     timeout,
-					RunIf:       runIf,
-					AbortIf:     abortIf,
-					RunIfFunc:   runIfFunc,
-					AbortIfFunc: abortIfFunc,
-				})
+				
+				tasks = append(tasks, finalTask)
 			})
 		}
 
@@ -865,6 +829,108 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string) (map[string]typ
 	})
 	return loadedTaskGroups, nil
 }
+
+// parseLuaTask is a helper function to parse a Lua table into a types.Task struct.
+func parseLuaTask(taskTable *lua.LTable) types.Task {
+	name := taskTable.RawGetString("name").String()
+	desc := taskTable.RawGetString("description").String()
+
+	var cmdFunc *lua.LFunction
+	var cmdStr string
+	luaCommand := taskTable.RawGetString("command")
+	if luaCommand.Type() == lua.LTString {
+		cmdStr = luaCommand.String()
+	} else if luaCommand.Type() == lua.LTFunction {
+		cmdFunc = luaCommand.(*lua.LFunction)
+	}
+
+	params := make(map[string]string)
+	luaParams := taskTable.RawGetString("params")
+	if luaParams.Type() == lua.LTTable {
+		luaParams.(*lua.LTable).ForEach(func(paramKey, paramValue lua.LValue) {
+			params[paramKey.String()] = paramValue.String()
+		})
+	}
+
+	var preExecFunc *lua.LFunction
+	luaPreExec := taskTable.RawGetString("pre_exec")
+	if luaPreExec.Type() == lua.LTFunction {
+		preExecFunc = luaPreExec.(*lua.LFunction)
+	}
+
+	var postExecFunc *lua.LFunction
+	luaPostExec := taskTable.RawGetString("post_exec")
+	if luaPostExec.Type() == lua.LTFunction {
+		postExecFunc = luaPostExec.(*lua.LFunction)
+	}
+
+	async := false
+	luaAsync := taskTable.RawGetString("async")
+	if luaAsync.Type() == lua.LTBool {
+		async = lua.LVAsBool(luaAsync)
+	}
+
+	var dependsOn []string
+	luaDependsOn := taskTable.RawGetString("depends_on")
+	if luaDependsOn.Type() == lua.LTString {
+		dependsOn = []string{luaDependsOn.String()}
+	} else if luaDependsOn.Type() == lua.LTTable {
+		luaDependsOn.(*lua.LTable).ForEach(func(_, depValue lua.LValue) {
+			if depValue.Type() == lua.LTString {
+				dependsOn = append(dependsOn, depValue.String())
+			}
+		})
+	}
+
+	retries := 0
+	luaRetries := taskTable.RawGetString("retries")
+	if luaRetries.Type() == lua.LTNumber {
+		retries = int(lua.LVAsNumber(luaRetries))
+	}
+
+	timeout := ""
+	luaTimeout := taskTable.RawGetString("timeout")
+	if luaTimeout.Type() == lua.LTString {
+		timeout = lua.LVAsString(luaTimeout)
+	}
+
+	runIf := ""
+	var runIfFunc *lua.LFunction
+	luaRunIf := taskTable.RawGetString("run_if")
+	if luaRunIf.Type() == lua.LTString {
+		runIf = lua.LVAsString(luaRunIf)
+	} else if luaRunIf.Type() == lua.LTFunction {
+		runIfFunc = luaRunIf.(*lua.LFunction)
+	}
+
+	abortIf := ""
+	var abortIfFunc *lua.LFunction
+	luaAbortIf := taskTable.RawGetString("abort_if")
+	if luaAbortIf.Type() == lua.LTString {
+		abortIf = lua.LVAsString(luaAbortIf)
+	} else if luaAbortIf.Type() == lua.LTFunction {
+		abortIfFunc = luaAbortIf.(*lua.LFunction)
+	}
+
+	return types.Task{
+		Name:        name,
+		Description: desc,
+		CommandFunc: cmdFunc,
+		CommandStr:  cmdStr,
+		Params:      params,
+		PreExec:     preExecFunc,
+		PostExec:    postExecFunc,
+		Async:       async,
+		DependsOn:   dependsOn,
+		Retries:     retries,
+		Timeout:     timeout,
+		RunIf:       runIf,
+		AbortIf:     abortIf,
+		RunIfFunc:   runIfFunc,
+		AbortIfFunc: abortIfFunc,
+	}
+}
+
 
 // LuaTableToGoMap converts a lua.LTable to a Go map[string]interface{}.
 // It handles nested tables and basic Lua types.

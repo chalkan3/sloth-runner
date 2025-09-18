@@ -71,28 +71,104 @@ Tasks are defined in Lua files, typically within a `TaskDefinitions` table. Each
 Example (`examples/basic_pipeline.lua`):
 
 ```lua
+-- Import reusable tasks from another file. The path is relative.
+local docker_tasks = import("examples/shared/docker.lua")
+
 TaskDefinitions = {
-    basic_pipeline = {
-        description = "A simple data processing pipeline",
+    full_pipeline_demo = {
+        description = "A comprehensive pipeline demonstrating various features.",
         tasks = {
-            {
+            -- Task 1: Fetches data, runs asynchronously.
+            fetch_data = {
                 name = "fetch_data",
-                description = "Simulates fetching raw data",
+                description = "Fetches raw data from an API.",
+                async = true,
                 command = function(params)
-                    print("Lua: Executing fetch_data...")
-                    return true, "echo 'Fetched raw data'", { raw_data = "some_data_from_api", source = "external_api" }
+                    log.info("Fetching data...")
+                    -- Simulates an API call
+                    return true, "echo 'Fetched raw data'", { raw_data = "api_data" }
                 end,
             },
-            {
+
+            -- Task 2: A flaky task that retries on failure.
+            flaky_task = {
+                name = "flaky_task",
+                description = "This task fails intermittently and will retry.",
+                retries = 3,
+                command = function()
+                    if math.random() > 0.5 then
+                        log.info("Flaky task succeeded.")
+                        return true, "echo 'Success!'"
+                    else
+                        log.error("Flaky task failed, will retry...")
+                        return false, "Random failure"
+                    end
+                end,
+            },
+
+            -- Task 3: Processes data, depends on the successful completion of fetch_data and flaky_task.
+            process_data = {
                 name = "process_data",
-                description = "Processes the raw data",
-                depends_on = "fetch_data", -- Dependency
-                command = function(params, input_from_dependency)
-                    local raw_data = input_from_dependency.fetch_data.raw_data
-                    print("Lua: Executing process_data with input: " .. raw_data)
-                    return true, "echo 'Processed data'", { processed_data = "processed_" .. raw_data, status = "success" }
+                description = "Processes the fetched data.",
+                depends_on = { "fetch_data", "flaky_task" },
+                command = function(params, deps)
+                    local raw_data = deps.fetch_data.raw_data
+                    log.info("Processing data: " .. raw_data)
+                    return true, "echo 'Processed data'", { processed_data = "processed_" .. raw_data }
                 end,
             },
+
+            -- Task 4: A long-running task with a timeout.
+            long_running_task = {
+                name = "long_running_task",
+                description = "A task that will be terminated if it runs too long.",
+                timeout = "5s",
+                command = "echo 'Starting long task...'; sleep 10; echo 'This will not be printed.';",
+            },
+
+            -- Task 5: A cleanup task that runs if the long_running_task fails.
+            cleanup_on_fail = {
+                name = "cleanup_on_fail",
+                description = "Runs only if the long-running task fails.",
+                next_if_fail = "long_running_task",
+                command = "echo 'Cleanup task executed due to previous failure.'",
+            },
+
+            -- Task 6: Uses a reusable task from the imported docker.lua module.
+            build_image = {
+                uses = docker_tasks.build,
+                description = "Builds the application's Docker image.",
+                params = {
+                    image_name = "my-awesome-app",
+                    tag = "v1.2.3",
+                    context = "./app_context"
+                }
+            },
+
+            -- Task 7: A conditional task that only runs if a file exists.
+            conditional_deploy = {
+                name = "conditional_deploy",
+                description = "Deploys the app only if the build artifact exists.",
+                depends_on = "build_image",
+                run_if = "test -f ./app_context/artifact.txt", -- Shell command condition
+                command = "echo 'Deploying application...'",
+            },
+
+            -- Task 8: This task will abort the entire workflow if a condition is met.
+            gatekeeper_check = {
+                name = "gatekeeper_check",
+                description = "Aborts the workflow if a critical condition is not met.",
+                abort_if = function(params, deps)
+                    -- Lua function condition
+                    log.warn("Checking gatekeeper condition...")
+                    if params.force_proceed ~= "true" then
+                        log.error("Gatekeeper check failed. Aborting workflow.")
+                        return true -- Abort
+                    end
+                    return false -- Do not abort
+                end,
+                command = "echo 'This command will not run if aborted.'"
+            }
         }
     }
 }
@@ -236,6 +312,88 @@ TaskDefinitions = {
                     return false
                 end,
                 command = "echo 'This should not be executed.'"
+            }
+        }
+    }
+}
+```
+</details>
+
+### Reusable Task Modules with `import`
+
+You can create reusable libraries of tasks and import them into your main workflow file. This is useful for sharing common tasks (like building Docker images, deploying applications, etc.) across multiple projects.
+
+The global `import()` function loads another Lua file and returns the value it returns. The path is resolved relative to the file calling `import`.
+
+**How it works:**
+1.  Create a module (e.g., `shared/docker.lua`) that defines a table of tasks and returns it.
+2.  In your main file, call `import("shared/docker.lua")` to load the module.
+3.  Reference the imported tasks in your main `TaskDefinitions` table using a `uses` field. `sloth-runner` will automatically merge the imported task with any local overrides you provide (like `description` or `params`).
+
+<details>
+<summary>Example Module (`examples/shared/docker.lua`):</summary>
+
+```lua
+-- examples/shared/docker.lua
+-- A reusable module for Docker tasks.
+
+local TaskDefinitions = {
+    build = {
+        name = "build",
+        description = "Builds a Docker image",
+        params = {
+            tag = "latest",
+            dockerfile = "Dockerfile",
+            context = "."
+        },
+        command = function(params)
+            local image_name = params.image_name or "my-default-image"
+            -- ... build command logic ...
+            local cmd = string.format("docker build -t %s:%s -f %s %s", image_name, params.tag, params.dockerfile, params.context)
+            return true, cmd
+        end
+    },
+    push = {
+        name = "push",
+        description = "Pushes a Docker image to a registry",
+        -- ... push task logic ...
+    }
+}
+
+return TaskDefinitions
+```
+</details>
+
+<details>
+<summary>Example Usage (`examples/reusable_tasks.lua`):</summary>
+
+```lua
+-- examples/reusable_tasks.lua
+
+-- Import the reusable Docker tasks.
+local docker_tasks = import("shared/docker.lua")
+
+TaskDefinitions = {
+    app_deployment = {
+        description = "A workflow that uses a reusable Docker module.",
+        tasks = {
+            -- Use the 'build' task from the module and override its params.
+            build = {
+                uses = docker_tasks.build,
+                description = "Build the main application Docker image",
+                params = {
+                    image_name = "my-app",
+                    tag = "v1.0.0",
+                    context = "./app"
+                }
+            },
+            
+            -- A regular task that depends on the imported 'build' task.
+            deploy = {
+                name = "deploy",
+                description = "Deploys the application",
+                depends_on = "build",
+                command = "echo 'Deploying...'"
             }
         }
     }

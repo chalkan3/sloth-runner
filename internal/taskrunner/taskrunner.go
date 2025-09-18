@@ -1,6 +1,7 @@
 package taskrunner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -32,34 +33,17 @@ func executeShellCondition(command string) (bool, error) {
 	return true, nil
 }
 
-type TaskError struct {
+// TaskExecutionError provides a more context-rich error for task failures.
+type TaskExecutionError struct {
 	TaskName string
 	Err      error
-	Type     TaskErrorType
 }
 
-type TaskErrorType string
-
-const (
-	ErrorTypePreExec    TaskErrorType = "PreExecError"
-	ErrorTypeCommand    TaskErrorType = "CommandError"
-	ErrorTypePostExec   TaskErrorType = "PostExecError"
-	ErrorTypeDependency TaskErrorType = "DependencyError"
-	ErrorTypeUnknown    TaskErrorType = "UnknownError"
-)
-
-func (te *TaskError) Error() string {
-	return fmt.Sprintf("task '%s' failed with %s: %v", te.TaskName, te.Type, te.Err)
+func (e *TaskExecutionError) Error() string {
+	return fmt.Sprintf("task '%s' failed: %v", e.TaskName, e.Err)
 }
 
-func NewTaskError(taskName string, err error, errType TaskErrorType) *TaskError {
-	return &TaskError{
-		TaskName: taskName,
-		Err:      err,
-		Type:     errType,
-	}
-}
-
+// TaskResult holds the outcome of a single task execution.
 type TaskResult struct {
 	Name     string
 	Status   string
@@ -77,6 +61,7 @@ type TaskRunner struct {
 	DryRun      bool
 }
 
+
 func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
@@ -93,18 +78,18 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	if t.AbortIfFunc != nil {
 		shouldAbort, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.AbortIfFunc, t.Params, inputFromDependencies, 1, nil)
 		if err != nil {
-			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if function: %w", err), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute abort_if function: %w", err)}
 		}
 		if shouldAbort {
-			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if function"), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("execution aborted by abort_if function")}
 		}
 	} else if t.AbortIf != "" {
 		shouldAbort, err := executeShellCondition(t.AbortIf)
 		if err != nil {
-			return NewTaskError(t.Name, fmt.Errorf("failed to execute abort_if condition: %w", err), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute abort_if condition: %w", err)}
 		}
 		if shouldAbort {
-			return NewTaskError(t.Name, fmt.Errorf("execution aborted by abort_if condition"), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("execution aborted by abort_if condition")}
 		}
 	}
 
@@ -112,7 +97,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	if t.RunIfFunc != nil {
 		shouldRun, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.RunIfFunc, t.Params, inputFromDependencies, 1, nil)
 		if err != nil {
-			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if function: %w", err), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute run_if function: %w", err)}
 		}
 		if !shouldRun {
 			pterm.Info.Printf("Skipping task '%s' due to run_if function condition.\n", t.Name)
@@ -129,7 +114,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	} else if t.RunIf != "" {
 		shouldRun, err := executeShellCondition(t.RunIf)
 		if err != nil {
-			return NewTaskError(t.Name, fmt.Errorf("failed to execute run_if condition: %w", err), ErrorTypeCommand)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute run_if condition: %w", err)}
 		}
 		if !shouldRun {
 			pterm.Info.Printf("Skipping task '%s' due to run_if condition.\n", t.Name)
@@ -143,20 +128,6 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 			mu.Unlock()
 			return nil
 		}
-	}
-
-	// DryRun check
-	if tr.DryRun {
-		pterm.Info.Printf("(Dry Run) Would execute task: %s\n", t.Name)
-		mu.Lock()
-		tr.Results = append(tr.Results, TaskResult{
-			Name:   t.Name,
-			Status: "DryRun",
-		})
-		completedTasks[t.Name] = true
-		delete(runningTasks, t.Name)
-		mu.Unlock()
-		return nil
 	}
 
 	var taskErr error
@@ -176,7 +147,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		if t.Timeout != "" {
 			timeout, err := time.ParseDuration(t.Timeout)
 			if err != nil {
-				return NewTaskError(t.Name, fmt.Errorf("invalid timeout duration: %w", err), ErrorTypeUnknown)
+				return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid timeout duration: %w", err)}
 			}
 			ctx, cancel = context.WithTimeout(context.Background(), timeout)
 		} else {
@@ -200,62 +171,74 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 	startTime := time.Now()
 	t.Output = tr.L.NewTable()
 
+	defer func() {
+		if r := recover(); r != nil {
+			taskErr = &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("panic: %v", r)}
+		}
+
+		duration := time.Since(startTime)
+		status := "Success"
+		if taskErr != nil {
+			status = "Failed"
+		}
+
+		mu.Lock()
+		tr.Results = append(tr.Results, TaskResult{
+			Name:     t.Name,
+			Status:   status,
+			Duration: duration,
+			Error:    taskErr,
+		})
+		taskOutputs[t.Name] = t.Output
+		completedTasks[t.Name] = true
+		delete(runningTasks, t.Name)
+		mu.Unlock()
+	}()
+
 	if t.PreExec != nil {
 		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
 		if err != nil {
-			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing pre_exec hook: %w", err), ErrorTypePreExec)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing pre_exec hook: %w", err)}
 		} else if !success {
-			taskErr = NewTaskError(t.Name, fmt.Errorf("pre-execution hook failed: %s", msg), ErrorTypePreExec)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("pre-execution hook failed: %s", msg)}
 		}
 	}
 
-	if taskErr == nil {
-		if t.CommandFunc != nil {
-			success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx)
-			if err != nil {
-				taskErr = NewTaskError(t.Name, fmt.Errorf("error executing command function: %w", err), ErrorTypeCommand)
-			} else if !success {
-				taskErr = NewTaskError(t.Name, fmt.Errorf("command function returned failure: %s", msg), ErrorTypeCommand)
-			} else if outputTable != nil {
-				t.Output = outputTable
-			}
-		} else if t.CommandStr == "" {
-			taskErr = NewTaskError(t.Name, fmt.Errorf("task has no command defined"), ErrorTypeCommand)
+	if t.CommandFunc != nil {
+		success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx)
+		if err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing command function: %w", err)}
+		} else if !success {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("command function returned failure: %s", msg)}
+		} else if outputTable != nil {
+			t.Output = outputTable
 		}
+	} else if t.CommandStr != "" {
+		cmd := exec.CommandContext(ctx, "bash", "-c", t.CommandStr)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		if err := cmd.Run(); err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("command '%s' failed: %w, output: %s", t.CommandStr, err, out.String())}
+		}
+	} else {
+		return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("task has no command defined")}
 	}
 
-	if taskErr == nil && t.PostExec != nil {
+	if t.PostExec != nil {
 		var postExecSecondArg lua.LValue = t.Output
 		if t.Output == nil {
 			postExecSecondArg = tr.L.NewTable()
 		}
 		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2, ctx)
 		if err != nil {
-			taskErr = NewTaskError(t.Name, fmt.Errorf("error executing post_exec hook: %w", err), ErrorTypePostExec)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing post_exec hook: %w", err)}
 		} else if !success {
-			taskErr = NewTaskError(t.Name, fmt.Errorf("post-execution hook failed: %s", msg), ErrorTypePostExec)
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("post-execution hook failed: %s", msg)}
 		}
 	}
 
-	duration := time.Since(startTime)
-	status := "Success"
-	if taskErr != nil {
-		status = "Failed"
-	}
-
-	mu.Lock()
-	tr.Results = append(tr.Results, TaskResult{
-		Name:     t.Name,
-		Status:   status,
-		Duration: duration,
-		Error:    taskErr,
-	})
-	taskOutputs[t.Name] = t.Output
-	completedTasks[t.Name] = true
-	delete(runningTasks, t.Name)
-	mu.Unlock()
-
-	return taskErr
+	return nil
 }
 
 func (tr *TaskRunner) Run() error {
@@ -330,8 +313,28 @@ func (tr *TaskRunner) Run() error {
 				for _, depName := range task.DependsOn {
 					if _, exists := taskMap[depName]; exists {
 						mu.Lock()
-						if !completedTasks[depName] {
+						completed := completedTasks[depName]
+						if !completed {
 							dependencyMet = false
+						} else {
+							// Check if the completed dependency was successful
+							var depSuccess bool
+							for _, res := range tr.Results {
+								if res.Name == depName && res.Error == nil {
+									depSuccess = true
+									break
+								}
+							}
+							if !depSuccess {
+								dependencyMet = false
+								// Mark this task as skipped since its dependency failed
+								tr.Results = append(tr.Results, TaskResult{
+									Name:   task.Name,
+									Status: "Skipped",
+									Error:  fmt.Errorf("dependency '%s' failed", depName),
+								})
+								completedTasks[task.Name] = true // Mark as completed to unblock the loop
+							}
 						}
 						mu.Unlock()
 						if !dependencyMet {
@@ -388,7 +391,7 @@ func (tr *TaskRunner) Run() error {
 						}
 					}
 					mu.Unlock()
-					circularErr := NewTaskError("group "+groupName, fmt.Errorf("circular dependency or unresolvable tasks. Uncompleted tasks: %v", uncompletedTasks), ErrorTypeDependency)
+					circularErr := &TaskExecutionError{TaskName: "group " + groupName, Err: fmt.Errorf("circular dependency or unresolvable tasks. Uncompleted tasks: %v", uncompletedTasks)}
 					log.Println(circularErr.Error())
 					errChan <- circularErr
 					break
@@ -424,6 +427,10 @@ func (tr *TaskRunner) Run() error {
 		if result.Error != nil {
 			status = pterm.Red(result.Status)
 			errStr = result.Error.Error()
+		} else if result.Status == "Skipped" {
+			status = pterm.Yellow(result.Status)
+		} else if result.Status == "DryRun" {
+			status = pterm.Cyan(result.Status)
 		}
 		tableData = append(tableData, []string{result.Name, status, result.Duration.String(), errStr})
 	}

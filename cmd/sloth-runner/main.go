@@ -38,6 +38,7 @@ var (
 	valuesFilePath string // New: Path to a values.yaml file
 	dryRun         bool
 	returnOutput   bool
+	yes            bool
 )
 
 // loadAndRenderLuaConfig reads, renders, and loads Lua task definitions.
@@ -102,6 +103,9 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 	// Open the 'salt' library for SaltStack operations
 	luainterface.OpenSalt(L)
 
+	// Open the 'import' function for importing other Lua files
+	luainterface.OpenImport(L, configFilePath)
+
 	// --- New: Load and expose values.yaml to Lua ---
 	if valuesFilePath != "" {
 		valuesContent, err := ioutil.ReadFile(valuesFilePath)
@@ -120,7 +124,7 @@ func loadAndRenderLuaConfig(configFilePath, env, shardsStr string, isProduction 
 	// --- End New ---
 
 	// Load the rendered Lua script content and parse task definitions
-	taskGroups, err := luainterface.LoadTaskDefinitions(L, renderedLua.String())
+	taskGroups, err := luainterface.LoadTaskDefinitions(L, renderedLua.String(), configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading task definitions: %w", err)
 	}
@@ -144,7 +148,7 @@ var runCmd = &cobra.Command{
 	Short: "Executes tasks defined in a Lua template file",
 	Long: `The run command executes tasks defined in a Lua template file.
 
-You can specify the file, environment variables, and target specific tasks or groups.`, 
+You can specify the file, environment variables, and target specific tasks or groups.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -158,7 +162,6 @@ You can specify the file, environment variables, and target specific tasks or gr
 				targetTasks[i] = strings.TrimSpace(task)
 			}
 		} else {
-			// Interactive task selection
 			var allTasks []string
 			if targetGroup != "" {
 				if group, ok := taskGroups[targetGroup]; ok {
@@ -181,11 +184,15 @@ You can specify the file, environment variables, and target specific tasks or gr
 				return nil
 			}
 
-			prompt := &survey.MultiSelect{
-				Message: "Select tasks to run:",
-				Options: allTasks,
+			if yes {
+				targetTasks = allTasks
+			} else {
+				prompt := &survey.MultiSelect{
+					Message: "Select tasks to run:",
+					Options: allTasks,
+				}
+				survey.AskOne(prompt, &targetTasks)
 			}
-			survey.AskOne(prompt, &targetTasks)
 		}
 
 		if len(targetTasks) == 0 {
@@ -243,7 +250,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
-	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`, 
+	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskGroups, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -278,7 +285,7 @@ var listCmd = &cobra.Command{
 var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validates the syntax and structure of a Lua task file",
-	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`, 
+	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		_, err := loadAndRenderLuaConfig(configFilePath, env, shardsStr, isProduction, valuesFilePath)
 		if err != nil {
@@ -305,6 +312,7 @@ func init() {
 	runCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks") // New flag for runCmd
 	runCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Simulate the execution of tasks without actually running them")
 	runCmd.Flags().BoolVar(&returnOutput, "return", false, "Return the output of the target tasks as JSON")
+	runCmd.Flags().BoolVarP(&yes, "yes", "y", false, "Bypass interactive task selection and run all tasks")
 
 	// Flags for list command (can reuse configFilePath, env, isProduction, shardsStr)
 	listCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
