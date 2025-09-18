@@ -15,5 +15,4 @@
 *   [高级示例](./advanced-examples.md)
 
 ---
-**可用语言：**
 [English](../en/index.md) | [Português](../pt/index.md) | [中文](./index.md)

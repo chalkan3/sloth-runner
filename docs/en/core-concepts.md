@@ -84,5 +84,4 @@ These modules offer a fluent and intuitive API for complex automation.
 For details on each module, please refer to their respective sections in the documentation.
 
 ---
-**Available Languages:**
 [English](./core-concepts.md) | [Português](../pt/core-concepts.md) | [中文](../zh/core-concepts.md)

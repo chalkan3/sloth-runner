@@ -10,10 +10,9 @@ Here you will find detailed guides, API references, and practical examples to he
 *   [Core Concepts](./core-concepts.md)
 *   **Built-in Modules:**
     *   [Git Module](./modules/git.md)
-    *   [Pulumi Module](./modules/modules/pulumi.md)
+    *   [Pulumi Module](./modules/pulumi.md)
     *   [Salt Module](./modules/salt.md)
 *   [Advanced Examples](./advanced-examples.md)
 
 ---
-**Available Languages:**
 [English](./index.md) | [Português](../pt/index.md) | [中文](../zh/index.md)

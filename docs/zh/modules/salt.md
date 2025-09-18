@@ -56,45 +56,45 @@ Sloth-Runner 中的 `salt` 模块提供了一个流畅的 API，可以直接从�
 -- examples/fluent_salt_api_test.lua
 
 command = function()
-    log.info("Starting Salt API fluent test...")
+    log.info("正在开始 Salt API 流畅测试...")
 
-    -- Test 1: Executing commands on minion 'keiteguica'
-    log.info("Testing single target: keiteguica")
-    -- Chain the ping() command for target 'keiteguica'
+    -- 测试 1: 在 minion 'keiteguica' 上执行命令
+    log.info("正在测试单个目标: keiteguica")
+    -- 为目标 'keiteguica' 链式调用 ping() 命令
     salt.target('keiteguica'):ping()
 
     log.info("--------------------------------------------------")
 
-    -- Test 2: Executing commands on multiple minions using globbing
-    log.info("Testing glob target: vm-gcp-squid-proxy*")
-    -- Chain ping() and cmd() commands for targets matching the pattern
+    -- 测试 2: 使用 globbing 在多个 minion 上执行命令
+    log.info("正在测试 glob 目标: vm-gcp-squid-proxy*")
+    -- 为匹配模式的目标链式调用 ping() 和 cmd() 命令
     salt.target('vm-gcp-squid-proxy*'):ping():cmd('pkg.upgrade')
 
-    log.info("Salt API fluent test completed.")
+    log.info("Salt API 流畅测试完成。")
 
-    log.info("Executing 'ls -la' via Salt and processing output...")
+    log.info("正在通过 Salt 执行 'ls -la' 并处理输出...")
     local result_stdout, result_stderr, result_err = salt.target('keiteguica'):cmd('cmd.run', 'ls -la'):result()
 
     if result_err ~= nil then
-        log.error("Error executing 'ls -la' via Salt: " .. result_err)
+        log.error("通过 Salt 执行 'ls -la' 时出错: " .. result_err)
         log.error("Stderr: " .. result_stderr)
     else
-        log.info("Output of 'ls -la' via Salt:")
-        -- If the output is a table (JSON), you can iterate over it or convert it to string
+        log.info("通过 Salt 执行 'ls -la' 的输出:")
+        -- 如果输出是表 (JSON)，您可以遍历它或将其转换为字符串
         if type(result_stdout) == "table" then
-            log.info("JSON Output (table): " .. data.to_json(result_stdout))
+            log.info("JSON 输出 (表): " .. data.to_json(result_stdout))
         else
             log.info(result_stdout)
         end
     end
-    log.info("Processing 'ls -la' output via Salt completed.")
+    log.info("通过 Salt 处理 'ls -la' 输出完成。")
 
-    return true, "Salt API fluent commands and 'ls -la' executed successfully."
+    return true, "Salt API 流畅命令和 'ls -la' 已成功执行。"
 end
 
 TaskDefinitions = {
     test_fluent_salt = {
-        description = "Demonstrates using the 'salt' module for SaltStack orchestration.",
+        description = "演示使用 'salt' 模块进行 SaltStack 编排。",
         tasks = {
             {
                 name = "run_salt_orchestration",
@@ -106,5 +106,4 @@ TaskDefinitions = {
 ```
 
 ---
-**可用语言：**
-[English](../en/modules/salt.md) | [Português ../../pt/modules/salt.md) | [中文](./salt.md)
+[English](../../en/modules/salt.md) | [Português](../../pt/modules/salt.md) | [中文](./salt.md)

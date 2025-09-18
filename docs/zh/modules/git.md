@@ -1,185 +1,185 @@
-# Módulo Git
+# Git 模块
 
-O módulo `git` do Sloth-Runner fornece uma API fluente e de alto nível para interagir com repositórios Git diretamente de seus scripts Lua. Isso permite automatizar operações comuns do Git, como clonagem, pull, adição, commit, tag e push, facilitando fluxos de trabalho de CI/CD e automação de versionamento.
+Sloth-Runner 中的 `git` 模块提供了一个流畅、高级的 API，可直接从您的 Lua 脚本与 Git 存储库进行交互。这使您能够自动化常见的 Git 操作，如克隆、拉取、添加、提交、打标签和推送，从而促进 CI/CD 工作流和版本控制自动化。
 
-## Casos de Uso Comuns
+## 常见用例
 
-*   **Automação de CI/CD:** Clonar repositórios, atualizar código, commitar alterações geradas por scripts e empurrar para o controle de versão.
-*   **Gerenciamento de Configuração:** Puxar as últimas configurações de um repositório Git antes de aplicar mudanças.
-*   **Versionamento Automático:** Criar tags e commits para novas versões de software.
+*   **CI/CD 自动化:** 克隆存储库、更新代码、提交脚本生成的更改，并推送到版本控制系统。
+*   **配置管理:** 在应用更改之前，从 Git 存储库中拉取最新的配置。
+*   **自动化版本控制:** 为新的软件版本创建标签和提交。
 
-## Referência da API
+## API 参考
 
 ### `git.clone(url, path)`
 
-Clona um repositório Git de uma URL para um caminho local. Se o caminho já contiver um repositório Git, a função retornará `nil` e uma mensagem de erro.
+将 Git 存储库从 URL 克隆到本地路径。如果该路径已包含 Git 存储库，则该函数将返回 `nil` 和一条错误消息。
 
-*   `url` (string): A URL do repositório Git a ser clonado.
-*   `path` (string): O caminho local onde o repositório será clonado.
+*   `url` (字符串): 要克隆的 Git 存储库的 URL。
+*   `path` (字符串): 将在其中克隆存储库的本地路径。
 
-**Retorna:**
-*   `GitRepo` (userdata): Uma instância do objeto `GitRepo` se o clone for bem-sucedido.
-*   `error` (string): Uma mensagem de erro se o clone falhar ou o caminho já for um repositório.
+**返回:**
+*   `GitRepo` (用户数据): 如果克隆成功，则为 `GitRepo` 对象的实例。
+*   `error` (字符串): 如果克隆失败或路径已经是存储库，则为错误消息。
 
 ### `git.repo(path)`
 
-Abre uma referência a um repositório Git local existente.
+打开对现有本地 Git 存储库的引用。
 
-*   `path` (string): O caminho local para o diretório raiz do repositório Git.
+*   `path` (字符串): Git 存储库根目录的本地路径。
 
-**Retorna:**
-*   `GitRepo` (userdata): Uma instância do objeto `GitRepo` se o caminho for um repositório Git válido.
-*   `error` (string): Uma mensagem de erro se o caminho não for um repositório Git.
+**返回:**
+*   `GitRepo` (用户数据): 如果路径是有效的 Git 存储库，则为 `GitRepo` 对象的实例。
+*   `error` (字符串): 如果路径不是 Git 存储库，则为错误消息。
 
-### Métodos do Objeto `GitRepo` (Encadeáveis)
+### `GitRepo` 对象方法 (可链式调用)
 
-Todos os métodos abaixo são chamados na instância do `GitRepo` (ex: `repo:checkout(...)`) e retornam a própria instância do `GitRepo` para permitir o encadeamento de chamadas. Para obter o resultado da última operação, use o método `:result()`.
+以下所有方法都在 `GitRepo` 实例上调用 (例如 `repo:checkout(...)`)，并返回 `GitRepo` 实例本身以允许方法链式调用。要获取上次操作的结果，请使用 `:result()` 方法。
 
 #### `repo:checkout(ref)`
 
-Muda o branch ou commit atual do repositório.
+更改存储库的当前分支或提交。
 
-*   `ref` (string): O branch, tag ou hash do commit para o qual fazer o checkout.
+*   `ref` (字符串): 要检出的分支、标签或提交哈希。
 
 #### `repo:pull(remote, branch)`
 
-Puxa as últimas alterações de um repositório remoto.
+从远程存储库拉取最新的更改。
 
-*   `remote` (string): O nome do remoto (ex: "origin").
-*   `branch` (string): O nome do branch a ser puxado.
+*   `remote` (字符串): 远程的名称 (例如 "origin")。
+*   `branch` (字符串): 要拉取的分支的名称。
 
 #### `repo:add(pattern)`
 
-Adiciona arquivos ao índice (staging area) do Git.
+将文件添加到 Git 索引 (暂存区)。
 
-*   `pattern` (string): O padrão de arquivo a ser adicionado (ex: ".", "path/to/file.txt").
+*   `pattern` (字符串): 要添加的文件模式 (例如 "."、"path/to/file.txt")。
 
 #### `repo:commit(message)`
 
-Cria um novo commit com as alterações no índice.
+使用索引中的更改创建一个新的提交。
 
-*   `message` (string): A mensagem do commit.
+*   `message` (字符串): 提交消息。
 
 #### `repo:tag(name, message)`
 
-Cria uma nova tag no repositório.
+在存储库中创建一个新标签。
 
-*   `name` (string): O nome da tag (ex: "v1.0.0").
-*   `message` (string, opcional): Uma mensagem opcional para a tag.
+*   `name` (字符串): 标签名称 (例如 "v1.0.0")。
+*   `message` (字符串, 可选): 标签的可选消息。
 
 #### `repo:push(remote, branch, options)`
 
-Empurra commits e tags para um repositório remoto.
+将提交和标签推送到远程存储库。
 
-*   `remote` (string): O nome do remoto (ex: "origin").
-*   `branch` (string): O nome do branch a ser empurrado.
-*   `options` (tabela Lua, opcional): Uma tabela de opções para flags adicionais:
-    *   `follow_tags` (booleano): Se `true`, adiciona a flag `--follow-tags` ao comando `git push`.
+*   `remote` (字符串): 远程的名称 (例如 "origin")。
+*   `branch` (字符串): 要推送的分支的名称。
+*   `options` (Lua 表, 可选): 用于附加标志的选项表：
+    *   `follow_tags` (布尔值): 如果为 `true`，则将 `--follow-tags` 标志添加到 `git push` 命令。
 
 #### `repo:result()`
 
-Retorna o resultado da última operação Git executada na instância do `GitRepo`.
+返回在 `GitRepo` 实例上执行的最后一个 Git 操作的结果。
 
-**Retorna:**
-*   `result` (tabela Lua): Uma tabela contendo:
-    *   `success` (booleano): `true` se a operação foi bem-sucedida, `false` caso contrário.
-    *   `stdout` (string): A saída padrão do comando Git.
-    *   `stderr` (string): A saída de erro padrão do comando Git.
-    *   `error` (string ou `nil`): Uma mensagem de erro Go se a execução do comando falhou.
+**返回:**
+*   `result` (Lua 表): 一个包含以下内容的表：
+    *   `success` (布尔值): 如果操作成功，则为 `true`；否则为 `false`。
+    *   `stdout` (字符串): Git 命令的标准输出。
+    *   `stderr` (字符串): Git 命令的标准错误输出。
+    *   `error` (字符串或 `nil`): 如果命令执行失败，则为 Go 错误消息。
 
-## Exemplos de Uso
+## 用法示例
 
-### Exemplo Básico de Automação Git
+### 基本 Git 自动化示例
 
-Este exemplo demonstra como clonar um repositório, fazer um pull, simular uma alteração, commitar e empurrar as mudanças.
+此示例演示如何克隆存储库、拉取更改、模拟修改、提交和推送更改。
 
 ```lua
 -- examples/git_example.lua
 
 command = function(params)
-    log.info("Iniciando exemplo de automação Git...")
+    log.info("正在开始 Git 自动化示例...")
 
-    local repo_url = "https://github.com/chalkan3/sloth-runner.git" -- Usando o próprio sloth-runner para exemplo
+    local repo_url = "https://github.com/chalkan3/sloth-runner.git" -- 以 sloth-runner 本身作为示例
     local repo_path = "./sloth-runner-checkout"
-    local new_version = params.version or "v1.0.0-test" -- Versão de exemplo
+    local new_version = params.version or "v1.0.0-test" -- 示例版本
     local repo
 
-    -- Clona o repositório se ele ainda não existir no disco
+    -- 如果存储库尚不存在于本地，则克隆它
     if not fs.exists(repo_path) then
-        log.info("Cloning repository: " .. repo_url .. " into " .. repo_path)
+        log.info("正在克隆存储库: " .. repo_url .. " 到 " .. repo_path)
         local cloned_repo, clone_err = git.clone(repo_url, repo_path)
         if clone_err then
-            log.error("Failed to clone repository: " .. clone_err)
-            return false, "Git clone failed."
+            log.error("克隆存储库失败: " .. clone_err)
+            return false, "Git 克隆失败。"
         end
         repo = cloned_repo
     else
-        log.info("Repository already exists, opening local reference: " .. repo_path)
-        local opened_repo, open_err = git.repo(repo_path) -- Apenas obtém o objeto para o repo local
+        log.info("存储库已存在，正在打开本地引用: " .. repo_path)
+        local opened_repo, open_err = git.repo(repo_path) -- 只获取本地仓库的对象
         if open_err then
-            log.error("Failed to open repository: " .. open_err)
-            return false, "Git repo open failed."
+            log.error("打开存储库失败: " .. open_err)
+            return false, "Git 仓库打开失败。"
         end
         repo = opened_repo
     end
 
     if not repo then
-        return false, "Failed to clone or open repository."
+        return false, "克隆或打开存储库失败。"
     end
 
-    log.info("Starting git operations on " .. repo.RepoPath .. "...")
+    log.info("正在 " .. repo.RepoPath .. " 上开始 git 操作...")
 
-    -- Executa uma sequência de comandos de forma fluente e encadeada
-    -- Nota: Cada operação retorna o objeto 'repo' para encadeamento.
-    -- Para verificar o sucesso de cada passo, você deve chamar :result() após cada um,
-    -- ou no final da cadeia para o último comando.
+    -- 流畅地链式执行一系列命令
+    -- 注意: 每个操作都返回 'repo' 对象以进行链式调用。
+    -- 要检查每个步骤的成功情况，您应该在每个步骤之后调用 :result()，
+    -- 或者在链的末尾调用以获取最后一个命令的结果。
 
-    log.info("Checking out main branch and pulling latest changes...")
+    log.info("正在检出 main 分支并拉取最新更改...")
     repo:checkout("main"):pull("origin", "main")
-    local pull_result = repo:result() -- Obtém o resultado do último comando (pull)
+    local pull_result = repo:result() -- 获取最后一个命令 (pull) 的结果
     if not pull_result.success then
-        log.error("Failed to checkout or pull: " .. pull_result.stderr)
-        return false, "Git checkout/pull failed."
+        log.error("检出或拉取失败: " .. pull_result.stderr)
+        return false, "Git 检出/拉取失败。"
     end
-    log.info("Checkout and pull successful. Stdout: " .. pull_result.stdout)
+    log.info("检出和拉取成功。Stdout: " .. pull_result.stdout)
 
-    -- Simula uma alteração no repositório
-    local version_file_path = repo_path .. "/VERSION_EXAMPLE" -- Usar um nome diferente para não conflitar
+    -- 模拟存储库中的更改
+    local version_file_path = repo_path .. "/VERSION_EXAMPLE" -- 使用不同的名称以避免冲突
     fs.write(version_file_path, new_version)
-    log.info("Updated VERSION_EXAMPLE file to: " .. new_version)
+    log.info("已将 VERSION_EXAMPLE 文件更新为: " .. new_version)
 
-    -- Adiciona, commita, tagueia e empurra as mudanças de forma encadeada
-    local commit_message = "ci: Example bump version to " .. new_version
-    log.info("Adding, committing, tagging, and pushing changes...")
+    -- 以链式方式添加、提交、打标签和推送更改
+    local commit_message = "ci: 示例将版本升级到 " .. new_version
+    log.info("正在添加、提交、打标签和推送更改...")
 
-    -- Encadeamento: add -> commit -> tag -> push
+    -- 链式调用: add -> commit -> tag -> push
     repo:add(version_file_path)
         :commit(commit_message)
-        :tag(new_version, "Release " .. new_version)
+        :tag(new_version, "发布 " .. new_version)
         :push("origin", "main", { follow_tags = true })
 
-    local final_push_result = repo:result() -- Obtém o resultado do último comando (push)
+    local final_push_result = repo:result() -- 获取最后一个命令 (push) 的结果
 
-    -- Verifica o resultado da última operação na cadeia
+    -- 检查链中最后一个操作的结果
     if not final_push_result.success then
-        log.error("Failed to push changes: " .. final_push_result.stderr)
-        return false, "Git push failed."
+        log.error("推送更改失败: " .. final_push_result.stderr)
+        return false, "Git 推送失败。"
     end
 
-    log.info("Successfully pushed version " .. new_version .. " to origin. Stdout: " .. final_push_result.stdout)
-    log.info("Exemplo de automação Git concluído com sucesso.")
-    return true, "Git automation example finished."
+    log.info("已成功将版本 " .. new_version .. " 推送到 origin。Stdout: " .. final_push_result.stdout)
+    log.info("Git 自动化示例成功完成。")
+    return true, "Git 自动化示例已完成。"
 end
 
 TaskDefinitions = {
     git_automation_example = {
-        description = "Demonstrates using the 'git' module for repository automation.",
+        description = "演示使用 'git' 模块进行存储库自动化。",
         tasks = {
             {
                 name = "run_git_automation",
                 command = command,
                 params = {
-                    version = "v1.0.0-test" -- Parâmetro de exemplo
+                    version = "v1.0.0-test" -- 示例参数
                 }
             }
         }
@@ -188,5 +188,4 @@ TaskDefinitions = {
 ```
 
 ---
-**可用语言：**
-[English](../en/modules/git.md) | [Português ../../pt/modules/git.md) | [中文](./git.md)
+[English](../../en/modules/git.md) | [Português](../../pt/modules/git.md) | [中文](./git.md)

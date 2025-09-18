@@ -106,5 +106,4 @@ TaskDefinitions = {
 ```
 
 ---
-**Idiomas Disponíveis:**
-[English](../en/modules/salt.md) | [Português](./salt.md) | [中文](../../zh/modules/salt.md)
+[English](../../en/modules/salt.md) | [Português](./salt.md) | [中文](../../zh/modules/salt.md)

@@ -188,5 +188,4 @@ TaskDefinitions = {
 ```
 
 ---
-**Idiomas Disponíveis:**
-[English](../en/modules/git.md) | [Português](./git.md) | [中文](../../zh/modules/git.md)
+[English](../../en/modules/git.md) | [Português](./git.md) | [中文](../../zh/modules/git.md)

@@ -31,5 +31,4 @@ sloth-runner list -f examples/basic_pipeline.lua
 Agora que você tem o Sloth-Runner instalado e funcionando, explore os [Conceitos Essenciais](./core-concepts.md) para entender como definir suas tarefas, ou mergulhe diretamente nos novos [Módulos Built-in](../index.md#módulos-built-in) para automação avançada com Git, Pulumi e Salt.
 
 ---
-**Idiomas Disponíveis:**
 [English](../en/getting-started.md) | [Português](./getting-started.md) | [中文](../zh/getting-started.md)

@@ -87,45 +87,45 @@ Sloth-Runner 中的 `pulumi` 模块允许您直接从 Lua 脚本编排 Pulumi �
 -- examples/pulumi_example.lua
 
 command = function()
-    log.info("Starting Pulumi orchestration example...")
+    log.info("正在开始 Pulumi 编排示例...")
 
-    -- Example 1: Deploy a base stack (e.g., VPC)
-    log.info("Deploying the base infrastructure stack (VPC)...")
+    -- 示例 1: 部署一个基础堆栈 (例如 VPC)
+    log.info("正在部署基础架构堆栈 (VPC)...")
     local vpc_stack = pulumi.stack("my-org/vpc-network/prod", {
-        workdir = "./pulumi/vpc" -- Assuming the Pulumi project directory is here
+        workdir = "./pulumi/vpc" -- 假设 Pulumi 项目目录在这里
     })
 
-    -- Execute 'pulumi up' non-interactively
+    -- 以非交互方式执行 'pulumi up'
     local vpc_result = vpc_stack:up({ non_interactive = true })
 
-    -- Check the VPC deployment result
+    -- 检查 VPC 部署结果
     if not vpc_result.success then
-        log.error("VPC stack deployment failed: " .. vpc_result.stderr)
-        return false, "VPC deployment failed."
+        log.error("VPC 堆栈部署失败: " .. vpc_result.stderr)
+        return false, "VPC 部署失败。"
     end
-    log.info("VPC stack deployed successfully. Stdout: " .. vpc_result.stdout)
+    log.info("VPC 堆栈部署成功。Stdout: " .. vpc_result.stdout)
 
-    -- Get outputs from the VPC stack
+    -- 从 VPC 堆栈获取输出
     local vpc_outputs, outputs_err = vpc_stack:outputs()
     if outputs_err then
-        log.error("Failed to get VPC stack outputs: " .. outputs_err)
-        return false, "Failed to get VPC outputs."
+        log.error("获取 VPC 堆栈输出失败: " .. outputs_err)
+        return false, "获取 VPC 输出失败。"
     end
 
-    local vpc_id = vpc_outputs.vpcId -- Assuming the stack exports 'vpcId'
+    local vpc_id = vpc_outputs.vpcId -- 假设堆栈导出 'vpcId'
     if not vpc_id then
-        log.warn("VPC stack did not export 'vpcId'. Continuing without it.")
+        log.warn("VPC 堆栈未导出 'vpcId'。将在没有它的情况下继续。")
         vpc_id = "unknown-vpc-id"
     end
-    log.info("Obtained VPC ID from outputs: " .. vpc_id)
+    log.info("从输出中获取的 VPC ID: " .. vpc_id)
 
-    -- Example 2: Deploy an application stack, using outputs from the previous stack as config
-    log.info("Deploying the application stack into VPC: " .. vpc_id)
+    -- 示例 2: 部署一个应用程序堆栈，使用前一个堆栈的输出作为配置
+    log.info("正在将应用程序堆栈部署到 VPC: " .. vpc_id)
     local app_stack = pulumi.stack("my-org/app-server/prod", {
-        workdir = "./pulumi/app" -- Assuming the app's Pulumi project directory is here
+        workdir = "./pulumi/app" -- 假设应用程序的 Pulumi 项目目录在这里
     })
 
-    -- Execute 'pulumi up' passing outputs from the previous stack as configuration
+    -- 执行 'pulumi up'，将前一个堆栈的输出作为配置传递
     local app_result = app_stack:up({
         non_interactive = true,
         config = {
@@ -134,20 +134,20 @@ command = function()
         }
     })
 
-    -- Check the application deployment result
+    -- 检查应用程序部署结果
     if not app_result.success then
-        log.error("Application stack deployment failed: " .. app_result.stderr)
-        return false, "Application deployment failed."
+        log.error("应用程序堆栈部署失败: " .. app_result.stderr)
+        return false, "应用程序部署失败。"
     end
-    log.info("Application stack deployed successfully. Stdout: " .. app_result.stdout)
+    log.info("应用程序堆栈部署成功。Stdout: " .. app_result.stdout)
 
-    log.info("Pulumi orchestration example finished successfully.")
-    return true, "Pulumi orchestration example finished."
+    log.info("Pulumi 编排示例成功完成。")
+    return true, "Pulumi 编排示例已完成。"
 end
 
 TaskDefinitions = {
     pulumi_orchestration_example = {
-        description = "Demonstrates using the 'pulumi' module to orchestrate infrastructure stacks.",
+        description = "演示使用 'pulumi' 模块来编排基础设施堆栈。",
         tasks = {
             {
                 name = "run_pulumi_orchestration",
@@ -159,5 +159,4 @@ TaskDefinitions = {
 ```
 
 ---
-**可用语言：**
-[English](../en/modules/pulumi.md) | [Português ../../pt/modules/pulumi.md) | [中文](./pulumi.md)
+[English](../../en/modules/pulumi.md) | [Português](../../pt/modules/pulumi.md) | [中文](./pulumi.md)

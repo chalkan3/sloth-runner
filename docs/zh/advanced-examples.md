@@ -144,5 +144,4 @@ TaskDefinitions = {
 ```
 
 ---
-**可用语言：**
-[English](../en/advanced-examples.md) | [Português ../../pt/advanced-examples.md) | [中文](./advanced-examples.md)
+[English](../en/advanced-examples.md) | [Português](../pt/advanced-examples.md) | [中文](./advanced-examples.md)

@@ -1,3 +1,5 @@
+[English](./README.md) | [Português](./README.pt.md) | [中文](./README.zh.md)
+
 # 🦥 Sloth Runner 🚀
 
 A flexible and extensible task runner application written in Go, powered by Lua scripting. `sloth-runner` allows you to define complex workflows, manage task dependencies, and integrate with external systems, all through simple Lua scripts.

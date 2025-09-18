@@ -84,5 +84,4 @@ Sloth-Runner 将各种 Go 功能公开为 Lua 模块，允许您的任务与系�
 有关每个模块的详细信息，请参阅文档中的相应部分。
 
 ---
-**可用语言：**
 [English](../en/core-concepts.md) | [Português](../pt/core-concepts.md) | [中文](./core-concepts.md)

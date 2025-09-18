@@ -31,5 +31,4 @@ sloth-runner list -f examples/basic_pipeline.lua
 现在您已经安装并运行了 Sloth-Runner，请探索[核心概念](./core-concepts.md)以了解如何定义任务，或者直接深入了解新的[内置模块](../index.md#内置模块)以使用 Git、Pulumi 和 Salt 进行高级自动化。
 
 ---
-**可用语言：**
 [English](../en/getting-started.md) | [Português](../pt/getting-started.md) | [中文](./getting-started.md)
