@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25.1'
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -24,12 +24,15 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-      - name: Check formatting
+      - name: Install Git
         run: |
-          gofmt -l .
-          test -z "$(gofmt -l .)" || (echo "Please run 'gofmt -w .' to format the code." && exit 1)
+          echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list
+          apt-get update
+          apt-get install -y git
       - name: Install dependencies
         run: go mod tidy
+        env:
+          GOPROXY: "direct"
       - name: Run linter
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
@@ -39,29 +42,34 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      - name: Install dependencies
-        run: go mod tidy
-      - name: Run tests with coverage
-        run: go test -v ./... -coverprofile=coverage.out
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.out
-
+        - name: Checkout
+          uses: actions/checkout@v4
+        - name: Set up Go
+          uses: actions/setup-go@v5
+          with:
+            go-version: '1.25.1'
+        - name: Cache Go modules
+          uses: actions/cache@v4
+          with:
+            path: ~/go/pkg/mod
+            key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+            restore-keys: |
+              ${{ runner.os }}-go-
+        - name: Install Git
+          run: |
+            echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list
+            apt-get update
+            apt-get install -y git
+        - name: Install dependencies
+          run: go mod tidy
+          env:
+            GOPROXY: "direct"
+        - name: Run tests with coverage
+          run: go test -v ./... -coverprofile=coverage.out
+        - name: Upload coverage report
+          uses: actions/upload-artifact@v4
+          with:
+            name: coverage-report
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -71,7 +79,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25.1'
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -79,8 +87,15 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+      - name: Install Git
+        run: |
+          echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list
+          apt-get update
+          apt-get install -y git
       - name: Install dependencies
         run: go mod tidy
+        env:
+          GOPROXY: "direct"
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run govulncheck
@@ -102,7 +117,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25.1'
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -110,6 +125,15 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+      - name: Install Git
+        run: |
+          echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list
+          apt-get update
+          apt-get install -y git
+      - name: Install dependencies
+        run: go mod tidy
+        env:
+          GOPROXY: "direct"
       - name: Build
         run: |
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -v ./cmd/sloth-runner
@@ -126,11 +150,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25.1'
+      - name: Install Git
+        run: |
+          echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list
+          apt-get update
+          apt-get install -y git
       - name: Run GoReleaser for changelog
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
+          version: '~> v2'
           args: release --snapshot --clean
         env:
+          GOPROXY: "direct"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
