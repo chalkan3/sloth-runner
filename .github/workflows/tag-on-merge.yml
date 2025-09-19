@@ -18,12 +18,15 @@ jobs:
           fetch-depth: 0 # Required to fetch all history for correct versioning
 
       - name: Bump version and push tag
-        id: tag_action
-        uses: anothrNick/github-tag-action@1.67.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BUMP: patch # Automatically increments the patch version (e.g., v1.0.0 -> v1.0.1)
-          WITH_V: true # Ensures the tag is created with a 'v' prefix (e.g., v1.0.1)
-
-      - name: Push new tag
-        run: git push origin ${{ steps.tag_action.outputs.new_tag }}
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Increment the patch version
+          NEW_TAG=$(echo $LATEST_TAG | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          echo "New tag: $NEW_TAG"
+          
+          # Create and push the new tag
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
