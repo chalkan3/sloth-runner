@@ -34,7 +34,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - name: Install dependencies
-        run: go mod tidy
+        run: |
+          go mod tidy
+          go mod download
         env:
           GOPROXY: "direct"
       - name: Run linter
