@@ -19,7 +19,7 @@ func TestRun_Successful_DependencyResolution(t *testing.T) {
 	groups := map[string]types.TaskGroup{
 		"test_group": {Tasks: []types.Task{task1, task2}},
 	}
-	tr := NewTaskRunner(L, groups, "test_group", nil, false) 
+	tr := NewTaskRunner(L, groups, "test_group", nil, false)
 	err := tr.Run()
 	assert.NoError(t, err)
 }

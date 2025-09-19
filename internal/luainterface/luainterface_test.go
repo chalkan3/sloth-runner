@@ -48,13 +48,12 @@ func setupTest(t *testing.T) (*lua.LState, func()) {
 	ExecCommand = mockExecCommand
 
 	L := lua.NewState()
-	OpenGit(L)
-	OpenPulumi(L)
-	OpenSalt(L)
+	L.PreloadModule("git", GitLoader)
+	L.PreloadModule("pulumi", PulumiLoader)
+	L.PreloadModule("salt", SaltLoader)
 	// Open modules required by the examples
 	OpenLog(L)
 	OpenData(L)
-
 
 	cleanup := func() {
 		ExecCommand = originalExecCommand
@@ -75,6 +74,7 @@ func TestGitClone_Basic(t *testing.T) {
 	defer cleanup()
 	clonePath := t.TempDir()
 	script := fmt.Sprintf(`
+		local git = require('git')
 		git.clone("https://a.com/b.git", "%s")
 	`, clonePath)
 	err := L.DoString(script)
@@ -85,6 +85,7 @@ func TestPulumiStack_MissingWorkdir_NoError(t *testing.T) {
 	L, cleanup := setupTest(t)
 	defer cleanup()
 	script := `
+		local pulumi = require('pulumi')
 		local stack, err = pulumi.stack("dev", {})
 	`
 	err := L.DoString(script)
@@ -96,7 +97,8 @@ func TestSaltTarget_Cmd_Basic(t *testing.T) {
 	defer cleanup()
 	mockExitCode = "1"
 	err := L.DoString(`
-		salt.target("*"):cmd("test.ping")
+		local salt = require('salt')
+		salt.target("*", "glob"):cmd("test.ping")
 	`)
 	assert.NoError(t, err)
 }
@@ -111,10 +113,17 @@ func TestSaltExample_FluentAPI(t *testing.T) {
 	luaScript, err := ioutil.ReadFile("../../examples/fluent_salt_api_test.lua")
 	assert.NoError(t, err)
 
+	// Prepend require statements to the script content
+	fullScript := `
+		local salt = require('salt')
+		local log = require('log')
+		local data = require('data')
+	` + string(luaScript)
+
 	// Execute the script's command function
-	err = L.DoString(string(luaScript))
+	err = L.DoString(fullScript)
 	assert.NoError(t, err)
-	
+
 	fn := L.GetGlobal("command").(*lua.LFunction)
 	err = L.CallByParam(lua.P{Fn: fn, NRet: 2})
 	assert.NoError(t, err)

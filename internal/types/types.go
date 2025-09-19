@@ -1,9 +1,65 @@
 package types
 
 import (
-	"time"
+	"bufio"
+	"fmt"
 	lua "github.com/yuin/gopher-lua"
+	"io"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
 )
+
+// SharedSession manages a persistent shell process.
+type SharedSession struct {
+	Cmd    *exec.Cmd
+	Stdin  io.WriteCloser
+	Stdout io.ReadCloser
+	Stderr io.ReadCloser
+	Mu     sync.Mutex
+}
+
+// ExecuteCommand runs a command in the persistent shell.
+func (s *SharedSession) ExecuteCommand(command string, workdir string) (string, string, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	// Unique boundary to mark end of output
+	boundary := fmt.Sprintf("END_OF_COMMAND_%d", time.Now().UnixNano())
+
+	// We need a reader for stdout to read until the boundary
+	reader := bufio.NewReader(s.Stdout)
+
+	// Execute command, merge stderr to stdout, and echo boundary
+	fullCommand := fmt.Sprintf("cd %s && %s 2>&1; echo %s\n", workdir, command, boundary)
+	if _, err := s.Stdin.Write([]byte(fullCommand)); err != nil {
+		return "", "", err
+	}
+
+	// Read stdout until boundary
+	var stdout, stderr strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", "", err
+		}
+		if strings.Contains(line, boundary) {
+			break
+		}
+		stdout.WriteString(line)
+	}
+
+	return stdout.String(), stderr.String(), nil
+}
+
+// Close terminates the persistent shell session.
+func (s *SharedSession) Close() error {
+	if s.Cmd.Process != nil {
+		return s.Cmd.Process.Kill()
+	}
+	return nil
+}
 
 // TaskResult holds the outcome of a single task execution.
 type TaskResult struct {
@@ -34,8 +90,11 @@ type Task struct {
 }
 
 type TaskGroup struct {
-	Description string
-	Tasks       []Task
+	Description              string
+	Tasks                    []Task
+	CreateWorkdirBeforeRun   bool
+	CleanWorkdirAfterRunFunc *lua.LFunction
+	ExecutionMode            string // "isolated" (default) or "shared_session"
 }
 
 type TaskRunner interface {

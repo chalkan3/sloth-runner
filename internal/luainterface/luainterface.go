@@ -21,7 +21,6 @@ import (
 
 var ExecCommand = exec.Command
 
-// newLuaImportFunction creates a Lua function that can import other Lua files.
 func newLuaImportFunction(baseDir string) lua.LGFunction {
 	return func(L *lua.LState) int {
 		relPath := L.CheckString(1)
@@ -39,13 +38,11 @@ func newLuaImportFunction(baseDir string) lua.LGFunction {
 	}
 }
 
-// OpenImport opens the 'import' function to the Lua state.
 func OpenImport(L *lua.LState, configFilePath string) {
 	baseDir := filepath.Dir(configFilePath)
 	L.SetGlobal("import", L.NewFunction(newLuaImportFunction(baseDir)))
 }
 
-// GoValueToLua converts a Go interface{} value to a Lua LValue.
 func GoValueToLua(L *lua.LState, value interface{}) lua.LValue {
 	switch v := value.(type) {
 	case bool:
@@ -85,7 +82,6 @@ func GoValueToLua(L *lua.LState, value interface{}) lua.LValue {
 	}
 }
 
-// LuaToGoValue converts a Lua LValue to a Go interface{} value.
 func LuaToGoValue(L *lua.LState, value lua.LValue) interface{} {
 	switch value.Type() {
 	case lua.LTBool:
@@ -179,15 +175,17 @@ func luaDataToYaml(L *lua.LState) int {
 	return 2
 }
 
-func OpenData(L *lua.LState) {
+func DataLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"parse_json": luaDataParseJson,
 		"to_json":    luaDataToJson,
 		"parse_yaml": luaDataParseYaml,
 		"to_yaml":    luaDataToYaml,
 	})
-	L.SetGlobal("data", mod)
+	L.Push(mod)
+	return 1
 }
+func OpenData(L *lua.LState) { L.PreloadModule("data", DataLoader) }
 
 // --- FS Module ---
 func luaFsRead(L *lua.LState) int {
@@ -299,8 +297,7 @@ func luaFsLs(L *lua.LState) int {
 	return 2
 }
 
-
-func OpenFs(L *lua.LState) {
+func FsLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"read":   luaFsRead,
 		"write":  luaFsWrite,
@@ -311,8 +308,10 @@ func OpenFs(L *lua.LState) {
 		"rm_r":   luaFsRmR,
 		"ls":     luaFsLs,
 	})
-	L.SetGlobal("fs", mod)
+	L.Push(mod)
+	return 1
 }
+func OpenFs(L *lua.LState) { L.PreloadModule("fs", FsLoader) }
 
 // --- Net Module ---
 func luaNetHttpGet(L *lua.LState) int {
@@ -439,52 +438,65 @@ func luaNetDownload(L *lua.LState) int {
 	return 1
 }
 
-
-func OpenNet(L *lua.LState) {
+func NetLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"http_get":  luaNetHttpGet,
 		"http_post": luaNetHttpPost,
 		"download":  luaNetDownload,
 	})
-	L.SetGlobal("net", mod)
+	L.Push(mod)
+	return 1
 }
+func OpenNet(L *lua.LState) { L.PreloadModule("net", NetLoader) }
 
 // --- Exec Module ---
-func luaExecCommand(L *lua.LState) int {
-	cmdName := L.CheckString(1)
-	var args []string
-	if L.GetTop() > 1 {
-		for i := 2; i <= L.GetTop(); i++ {
-			args = append(args, L.CheckString(i))
-		}
-	}
+func luaExecRun(L *lua.LState) int {
+	commandStr := L.CheckString(1)
+	opts := L.OptTable(2, L.NewTable())
+
 	ctx := L.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cmd := exec.CommandContext(ctx, cmdName, args...)
+
+	cmd := exec.CommandContext(ctx, "bash", "-c", commandStr)
+
+	// Set workdir from options
+	if workdir := opts.RawGetString("workdir"); workdir.Type() == lua.LTString {
+		cmd.Dir = workdir.String()
+	}
+
+	// Set environment variables from options
+	cmd.Env = os.Environ() // Inherit current environment
+	if envTbl := opts.RawGetString("env"); envTbl.Type() == lua.LTTable {
+		envTbl.(*lua.LTable).ForEach(func(key, value lua.LValue) {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key.String(), value.String()))
+		})
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+
 	err := cmd.Run()
-	if err != nil {
-		L.Push(lua.LString(stdout.String()))
-		L.Push(lua.LString(stderr.String()))
-		L.Push(lua.LString(err.Error()))
-		return 3
-	}
-	L.Push(lua.LString(stdout.String()))
-	L.Push(lua.LString(stderr.String()))
-	L.Push(lua.LNil)
-	return 3
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(success))
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	L.Push(result)
+	return 1
 }
 
-func OpenExec(L *lua.LState) {
+func ExecLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"command": luaExecCommand,
+		"run": luaExecRun,
 	})
-	L.SetGlobal("exec", mod)
+	L.Push(mod)
+	return 1
 }
+func OpenExec(L *lua.LState) { L.PreloadModule("exec", ExecLoader) }
 
 // --- Log Module ---
 func luaLogInfo(L *lua.LState) int {
@@ -511,16 +523,17 @@ func luaLogDebug(L *lua.LState) int {
 	return 0
 }
 
-func OpenLog(L *lua.LState) {
+func LogLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 		"info":  luaLogInfo,
 		"warn":  luaLogWarn,
 		"error": luaLogError,
 		"debug": luaLogDebug,
 	})
-	L.SetGlobal("log", mod)
+	L.Push(mod)
+	return 1
 }
-
+func OpenLog(L *lua.LState) { L.PreloadModule("log", LogLoader) }
 
 // --- Parallel Module ---
 func newParallelFunction(tr types.TaskRunner) lua.LGFunction {
@@ -565,11 +578,15 @@ func newParallelFunction(tr types.TaskRunner) lua.LGFunction {
 }
 
 func OpenParallel(L *lua.LState, tr types.TaskRunner) {
-	L.SetGlobal("parallel", L.NewFunction(newParallelFunction(tr)))
+	L.PreloadModule("parallel", func(L *lua.LState) int {
+		mod := L.NewFunction(newParallelFunction(tr))
+		L.Push(mod)
+		return 1
+	})
 }
 
 // --- Core Execution Logic ---
-func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]string, secondArg lua.LValue, nRet int, ctx context.Context) (bool, string, *lua.LTable, error) {
+func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]string, secondArg lua.LValue, nRet int, ctx context.Context, args ...lua.LValue) (bool, string, *lua.LTable, error) {
 	if ctx != nil {
 		L.SetContext(ctx)
 	}
@@ -584,6 +601,12 @@ func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]stri
 		L.Push(secondArg)
 		numArgs = 2
 	}
+	// Push additional args
+	for _, arg := range args {
+		L.Push(arg)
+		numArgs++
+	}
+
 	if err := L.PCall(numArgs, lua.MultRet, nil); err != nil {
 		return false, "", nil, fmt.Errorf("error executing Lua function: %w", err)
 	}
@@ -630,6 +653,11 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 		}
 		groupTable := groupValue.(*lua.LTable)
 		description := groupTable.RawGetString("description").String()
+
+		// Parse workdir lifecycle fields
+		createWorkdir := lua.LVAsBool(groupTable.RawGetString("create_workdir_before_run"))
+		cleanWorkdirFunc, _ := groupTable.RawGetString("clean_workdir_after_run").(*lua.LFunction)
+
 		var tasks []types.Task
 		luaTasks := groupTable.RawGetString("tasks")
 		if luaTasks.Type() == lua.LTTable {
@@ -664,8 +692,10 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 			})
 		}
 		loadedTaskGroups[groupName] = types.TaskGroup{
-			Description: description,
-			Tasks:       tasks,
+			Description:              description,
+			Tasks:                    tasks,
+			CreateWorkdirBeforeRun:   createWorkdir,
+			CleanWorkdirAfterRunFunc: cleanWorkdirFunc,
 		}
 	})
 	return loadedTaskGroups, nil
