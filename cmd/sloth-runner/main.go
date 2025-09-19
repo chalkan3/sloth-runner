@@ -349,15 +349,6 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 	if err := tmpl.Execute(&renderedLua, data); err != nil {
 		return nil, fmt.Errorf("error executing Lua template: %w", err)
 	}
-	luainterface.OpenExec(L)
-	luainterface.OpenFs(L)
-	luainterface.OpenNet(L)
-	luainterface.OpenData(L)
-	luainterface.OpenLog(L)
-	luainterface.OpenSalt(L)
-	luainterface.OpenPulumi(L)
-	luainterface.OpenGit(L)
-	luainterface.OpenPython(L)
 	luainterface.OpenImport(L, configFilePath)
 	luainterface.OpenParallel(L, tr)
 	if valuesFilePath != "" {
@@ -462,6 +453,11 @@ You can specify the file, environment variables, and target specific tasks or gr
 	RunE: func(cmd *cobra.Command, args []string) error {
 		L := lua.NewState()
 		defer L.Close()
+
+		// Inicialização centralizada e definitiva do ambiente Lua.
+		// Isso garante que todos os módulos estejam sempre disponíveis.
+		luainterface.OpenAll(L)
+
 		var dummyTr types.TaskRunner = nil
 		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
 		if err != nil {
