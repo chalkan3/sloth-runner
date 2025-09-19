@@ -31,8 +31,6 @@ jobs:
         run: go mod tidy
       - name: Go Mod Download
         run: go mod download
-      - name: List files
-        run: ls -l
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
