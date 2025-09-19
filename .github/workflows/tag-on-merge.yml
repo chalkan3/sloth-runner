@@ -1,12 +1,14 @@
 name: Create Tag on Merge
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - master
 
 jobs:
   create-tag:
+    if: github.event.pull_request.merged == true
     name: Create Tag
     runs-on: ubuntu-latest
     permissions:
