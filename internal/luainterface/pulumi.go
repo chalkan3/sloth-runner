@@ -215,8 +215,33 @@ func pulumiStackConfig(L *lua.LState) int {
 }
 
 var pulumiMethods = map[string]lua.LGFunction{
-	"stack": pulumiStackFn,
-	"login": pulumiLoginFn,
+	"stack":          pulumiStackFn,
+	"login":          pulumiLoginFn,
+	"install_plugin": pulumiInstallPluginFn,
+}
+
+// pulumi.install_plugin(plugin_name)
+func pulumiInstallPluginFn(L *lua.LState) int {
+	pluginName := L.CheckString(1)
+
+	// Adicionamos --reinstall para garantir que o plugin esteja sempre presente em ambientes de CI
+	fullCommand := fmt.Sprintf("pulumi plugin install language %s --reinstall", pluginName)
+
+	cmd := exec.Command("bash", "-c", fullCommand)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("success", lua.LBool(success))
+	L.Push(result)
+	return 1
 }
 
 // pulumi:login(url)
