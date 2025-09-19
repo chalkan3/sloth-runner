@@ -535,6 +535,19 @@ func LogLoader(L *lua.LState) int {
 }
 func OpenLog(L *lua.LState) { L.PreloadModule("log", LogLoader) }
 
+// OpenAll preloads all available sloth-runner modules into the Lua state.
+func OpenAll(L *lua.LState) {
+	OpenExec(L)
+	OpenFs(L)
+	OpenNet(L)
+	OpenData(L)
+	OpenLog(L)
+	OpenSalt(L)
+	OpenPulumi(L)
+	OpenGit(L)
+	OpenPython(L)
+}
+
 // --- Parallel Module ---
 func newParallelFunction(tr types.TaskRunner) lua.LGFunction {
 	return func(L *lua.LState) int {
