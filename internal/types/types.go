@@ -13,11 +13,12 @@ import (
 
 // SharedSession manages a persistent shell process.
 type SharedSession struct {
-	Cmd    *exec.Cmd
-	Stdin  io.WriteCloser
-	Stdout io.ReadCloser
-	Stderr io.ReadCloser
-	Mu     sync.Mutex
+	Cmd     *exec.Cmd
+	Stdin   io.WriteCloser
+	Stdout  io.ReadCloser
+	Stderr  io.ReadCloser
+	Mu      sync.Mutex
+	Workdir string
 }
 
 // ExecuteCommand runs a command in the persistent shell.
@@ -92,6 +93,7 @@ type Task struct {
 type TaskGroup struct {
 	Description              string
 	Tasks                    []Task
+	Workdir                  string // Add this line
 	CreateWorkdirBeforeRun   bool
 	CleanWorkdirAfterRunFunc *lua.LFunction
 	ExecutionMode            string // "isolated" (default) or "shared_session"
