@@ -168,12 +168,16 @@ func pulumiStackConfig(L *lua.LState) int {
 	value := L.CheckString(3)
 	isSecret := L.OptBool(4, false)
 
-	args := []string{"config", "set", key, value, "--stack", stack.Name}
-	if isSecret {
-		args = append(args, "--secret")
-	}
+	// O valor deve ser colocado entre aspas para ser passado com segurança para o shell.
+	quotedValue := fmt.Sprintf("'%s'", value)
 
-	fullCommand := "pulumi " + strings.Join(args, " ")
+	configCmdParts := []string{"pulumi", "config", "set", key, quotedValue, "--stack", stack.Name}
+	if isSecret {
+		configCmdParts = append(configCmdParts, "--secret")
+	}
+	configCmd := strings.Join(configCmdParts, " ")
+
+	fullCommand := configCmd
 	if stack.LoginURL != "" {
 		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
 		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
