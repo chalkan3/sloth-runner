@@ -185,7 +185,12 @@ func DataLoader(L *lua.LState) int {
 	L.Push(mod)
 	return 1
 }
-func OpenData(L *lua.LState) { L.PreloadModule("data", DataLoader) }
+func OpenData(L *lua.LState) {
+	L.PreloadModule("data", DataLoader)
+	if err := L.DoString(`data = require("data")`); err != nil {
+		panic(err)
+	}
+}
 
 // --- FS Module ---
 func luaFsRead(L *lua.LState) int {
@@ -311,7 +316,12 @@ func FsLoader(L *lua.LState) int {
 	L.Push(mod)
 	return 1
 }
-func OpenFs(L *lua.LState) { L.PreloadModule("fs", FsLoader) }
+func OpenFs(L *lua.LState) {
+	L.PreloadModule("fs", FsLoader)
+	if err := L.DoString(`fs = require("fs")`); err != nil {
+		panic(err)
+	}
+}
 
 // --- Net Module ---
 func luaNetHttpGet(L *lua.LState) int {
@@ -447,7 +457,12 @@ func NetLoader(L *lua.LState) int {
 	L.Push(mod)
 	return 1
 }
-func OpenNet(L *lua.LState) { L.PreloadModule("net", NetLoader) }
+func OpenNet(L *lua.LState) {
+	L.PreloadModule("net", NetLoader)
+	if err := L.DoString(`net = require("net")`); err != nil {
+		panic(err)
+	}
+}
 
 // --- Exec Module ---
 func luaExecRun(L *lua.LState) int {
@@ -496,7 +511,12 @@ func ExecLoader(L *lua.LState) int {
 	L.Push(mod)
 	return 1
 }
-func OpenExec(L *lua.LState) { L.PreloadModule("exec", ExecLoader) }
+func OpenExec(L *lua.LState) {
+	L.PreloadModule("exec", ExecLoader)
+	if err := L.DoString(`exec = require("exec")`); err != nil {
+		panic(err)
+	}
+}
 
 // --- Log Module ---
 func luaLogInfo(L *lua.LState) int {
@@ -533,7 +553,12 @@ func LogLoader(L *lua.LState) int {
 	L.Push(mod)
 	return 1
 }
-func OpenLog(L *lua.LState) { L.PreloadModule("log", LogLoader) }
+func OpenLog(L *lua.LState) {
+	L.PreloadModule("log", LogLoader)
+	if err := L.DoString(`log = require("log")`); err != nil {
+		panic(err)
+	}
+}
 
 // OpenAll preloads all available sloth-runner modules into the Lua state.
 func OpenAll(L *lua.LState) {
