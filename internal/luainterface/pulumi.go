@@ -2,217 +2,278 @@ package luainterface
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/chalkan3/sloth-runner/internal/types"
 	lua "github.com/yuin/gopher-lua"
 )
 
-// luaPulumiStackTypeName is the name of the Lua userdata type for PulumiStack.
-const luaPulumiStackTypeName = "pulumi_stack"
+const (
+	luaPulumiStackTypeName = "pulumiStack"
+)
 
-// PulumiStack holds the state for a fluent Pulumi API call.
-type PulumiStack struct {
-	StackName string
-	WorkDir   string
+type pulumiStack struct {
+	Name     string
+	WorkDir  string
+	VenvPath string // Novo campo para o caminho do venv
 }
 
-// OpenPulumi registers the 'pulumi' module with the Lua state.
-func OpenPulumi(L *lua.LState) {
-	// Create the metatable for the PulumiStack type.
-	mt := L.NewTypeMetatable(luaPulumiStackTypeName)
-	L.SetGlobal(luaPulumiStackTypeName, mt) // Optional: make metatable available globally.
+// pulumi:stack(name, {workdir="path", venv_path="path"}) -> stack
+func pulumiStackFn(L *lua.LState) int {
+	name := L.CheckString(1)
+	opts := L.CheckTable(2)
+	workdir := opts.RawGetString("workdir").String()
+	venvPath := opts.RawGetString("venv_path").String() // Lê o novo campo
 
-	// Register methods for the PulumiStack type.
-	methods := map[string]lua.LGFunction{
-		"up":      pulumiStackUp,
-		"preview": pulumiStackPreview,
-		"refresh": pulumiStackRefresh,
-		"destroy": pulumiStackDestroy,
-		"outputs": pulumiStackOutputs,
-	}
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), methods))
-
-	// Create the main 'pulumi' module table.
-	pulumiModule := L.NewTable()
-
-	// Register the entry point function 'stack'.
-	pulumiFuncs := map[string]lua.LGFunction{
-		"stack": newPulumiStack,
-	}
-	L.SetFuncs(pulumiModule, pulumiFuncs)
-
-	// Make the 'pulumi' module available globally.
-	L.SetGlobal("pulumi", pulumiModule)
-}
-
-// newPulumiStack is the entry point for the fluent API, exposed as pulumi.stack(name, options_table).
-func newPulumiStack(L *lua.LState) int {
-	stackName := L.CheckString(1)
-	options := L.OptTable(2, L.NewTable()) // Optional options table
-
-	workDir := options.RawGetString("workdir").String()
-	if workDir == "" {
-		L.Push(lua.LNil) // Return nil for the stack object
-		L.Push(lua.LString("workdir option is required for pulumi.stack()")) // Return error message
-		return 2
+	if workdir == "" {
+		L.RaiseError("o campo 'workdir' é obrigatório para pulumi:stack")
+		return 0
 	}
 
-	stack := &PulumiStack{
-		StackName: stackName,
-		WorkDir:   workDir,
+	stack := &pulumiStack{
+		Name:     name,
+		WorkDir:  workdir,
+		VenvPath: venvPath, // Armazena o caminho
 	}
 
 	ud := L.NewUserData()
 	ud.Value = stack
 	L.SetMetatable(ud, L.GetTypeMetatable(luaPulumiStackTypeName))
 	L.Push(ud)
-	L.Push(lua.LNil) // No error
-	return 2
-}
-
-// checkPulumiStack retrieves the PulumiStack struct from a Lua userdata.
-func checkPulumiStack(L *lua.LState) *PulumiStack {
-	ud := L.CheckUserData(1)
-	if v, ok := ud.Value.(*PulumiStack); ok {
-		return v
-	}
-	L.ArgError(1, "pulumi_stack expected")
-	return nil
-}
-
-// runPulumiCommand executes a Pulumi CLI command and returns its structured output to Lua.
-func runPulumiCommand(L *lua.LState, stack *PulumiStack, command string, args []string, options *lua.LTable) int {
-	var pulumiArgs []string
-	pulumiArgs = append(pulumiArgs, command)
-	pulumiArgs = append(pulumiArgs, "--stack", stack.StackName)
-	pulumiArgs = append(pulumiArgs, "--cwd", stack.WorkDir)
-
-	// Handle common options
-	if options != nil {
-		if nonInteractive := options.RawGetString("non_interactive"); nonInteractive.Type() == lua.LTBool && lua.LVAsBool(nonInteractive) {
-			pulumiArgs = append(pulumiArgs, "--non-interactive", "--yes") // --yes is often needed with --non-interactive
-		}
-		// Handle --config
-		if configTable := options.RawGetString("config"); configTable.Type() == lua.LTTable {
-			configTable.(*lua.LTable).ForEach(func(key, val lua.LValue) {
-				pulumiArgs = append(pulumiArgs, "--config", fmt.Sprintf("%s=%s", key.String(), val.String()))
-			})
-		}
-		// Add any other specific args passed directly
-		if extraArgs := options.RawGetString("args"); extraArgs.Type() == lua.LTTable {
-			extraArgs.(*lua.LTable).ForEach(func(_, argVal lua.LValue) {
-				pulumiArgs = append(pulumiArgs, argVal.String())
-			})
-		}
-	}
-
-	cmd := ExecCommand("pulumi", pulumiArgs...)
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	log.Printf("Executing Pulumi command: pulumi %s", strings.Join(pulumiArgs, " "))
-
-	err := cmd.Run()
-
-	resultTable := L.NewTable()
-	resultTable.RawSetString("stdout", lua.LString(stdoutBuf.String()))
-	resultTable.RawSetString("stderr", lua.LString(stderrBuf.String()))
-
-	if err != nil {
-		resultTable.RawSetString("success", lua.LBool(false))
-		resultTable.RawSetString("error", lua.LString(err.Error()))
-	} else {
-		resultTable.RawSetString("success", lua.LBool(true))
-		resultTable.RawSetString("error", lua.LNil)
-	}
-
-	L.Push(resultTable)
 	return 1
 }
 
-// pulumiStackUp implements the .up() method for PulumiStack.
-func pulumiStackUp(L *lua.LState) int {
-	stack := checkPulumiStack(L)
-	if stack == nil {
-		return 0
+// --- Métodos do Objeto Stack ---
+
+func checkPulumiStack(L *lua.LState, n int) *pulumiStack {
+	ud := L.CheckUserData(n)
+	if v, ok := ud.Value.(*pulumiStack); ok {
+		return v
 	}
-	options := L.OptTable(2, L.NewTable()) // Optional options table
-	return runPulumiCommand(L, stack, "up", nil, options)
+	L.ArgError(n, "esperado objeto stack do pulumi")
+	return nil
 }
 
-// pulumiStackPreview implements the .preview() method for PulumiStack.
-func pulumiStackPreview(L *lua.LState) int {
-	stack := checkPulumiStack(L)
-	if stack == nil {
-		return 0
-	}
-	options := L.OptTable(2, L.NewTable()) // Optional options table
-	return runPulumiCommand(L, stack, "preview", nil, options)
-}
+func runPulumiCommand(L *lua.LState, command string) int {
+	stack := checkPulumiStack(L, 1)
 
-// pulumiStackRefresh implements the .refresh() method for PulumiStack.
-func pulumiStackRefresh(L *lua.LState) int {
-	stack := checkPulumiStack(L)
-	if stack == nil {
-		return 0
-	}
-	options := L.OptTable(2, L.NewTable()) // Optional options table
-	return runPulumiCommand(L, stack, "refresh", nil, options)
-}
-
-// pulumiStackDestroy implements the .destroy() method for PulumiStack.
-func pulumiStackDestroy(L *lua.LState) int {
-	stack := checkPulumiStack(L)
-	if stack == nil {
-		return 0
-	}
-	options := L.OptTable(2, L.NewTable()) // Optional options table
-	return runPulumiCommand(L, stack, "destroy", nil, options)
-}
-
-// pulumiStackOutputs implements the .outputs() method for PulumiStack.
-// It returns a Lua table representing the stack outputs.
-func pulumiStackOutputs(L *lua.LState) int {
-	stack := checkPulumiStack(L)
-	if stack == nil {
-		return 0
+	// Check if a session object is passed as the third argument
+	var session *types.SharedSession
+	if L.GetTop() >= 3 {
+		if ud, ok := L.Get(3).(*lua.LUserData); ok {
+			if s, ok := ud.Value.(*types.SharedSession); ok {
+				session = s
+			}
+		}
 	}
 
-	// Execute 'pulumi stack output --json'
-	var pulumiArgs []string
-	pulumiArgs = append(pulumiArgs, "stack", "output", "--json")
-	pulumiArgs = append(pulumiArgs, "--stack", stack.StackName)
-	pulumiArgs = append(pulumiArgs, "--cwd", stack.WorkDir)
+	pulumiArgs := []string{command, "--stack", stack.Name}
+	var stderrFile lua.LValue
+	if L.GetTop() >= 2 {
+		opts := L.CheckTable(2)
+		if lua.LVAsBool(opts.RawGetString("yes")) {
+			pulumiArgs = append(pulumiArgs, "--yes")
+		}
+		if lua.LVAsBool(opts.RawGetString("skip_preview")) {
+			pulumiArgs = append(pulumiArgs, "--skip-preview")
+		}
+		stderrFile = opts.RawGetString("stderr_file")
+	}
 
-	cmd := ExecCommand("pulumi", pulumiArgs...)
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+	if session != nil {
+		// Execute in shared session
+		fullCommand := "pulumi " + strings.Join(pulumiArgs, " ")
+		stdout, stderr, err := session.ExecuteCommand(fullCommand, stack.WorkDir)
+		success := err == nil
 
-	log.Printf("Executing Pulumi command for outputs: pulumi %s", strings.Join(pulumiArgs, " "))
+		result := L.NewTable()
+		result.RawSetString("stdout", lua.LString(stdout))
+		result.RawSetString("stderr", lua.LString(stderr))
+		result.RawSetString("success", lua.LBool(success))
+		L.Push(result)
+		return 1
+	}
+
+	// Fallback to isolated execution
+	pulumiPath := "pulumi"
+	cmd := exec.Command(pulumiPath, pulumiArgs...)
+	cmd.Dir = stack.WorkDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	if stderrFile != nil && stderrFile != lua.LNil {
+		f, err := os.OpenFile(stderrFile.String(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			L.RaiseError("failed to open stderr file: %v", err)
+		}
+		cmd.Stderr = f
+		defer f.Close()
+	} else {
+		cmd.Stderr = &stderr
+	}
 
 	err := cmd.Run()
+	success := err == nil
 
-	if err != nil {
-		L.Push(lua.LNil) // No outputs table
-		L.Push(lua.LString(fmt.Sprintf("failed to get pulumi outputs: %s, stderr: %s", err.Error(), stderrBuf.String())))
-		return 2
+	result := L.NewTable()
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("success", lua.LBool(success))
+	L.Push(result)
+	return 1
+}
+
+// stack:up({ yes=true, skip_preview=true })
+func pulumiStackUp(L *lua.LState) int {
+	return runPulumiCommand(L, "up")
+}
+
+// stack:preview()
+func pulumiStackPreview(L *lua.LState) int {
+	return runPulumiCommand(L, "preview")
+}
+
+// stack:destroy({ yes=true })
+func pulumiStackDestroy(L *lua.LState) int {
+	return runPulumiCommand(L, "destroy")
+}
+
+// stack:outputs() -> table
+func pulumiStackOutputs(L *lua.LState) int {
+	stack := checkPulumiStack(L, 1)
+	fmt.Printf("Obtendo saídas (outputs) para a stack '%s' em '%s'\n", stack.Name, stack.WorkDir)
+	// Simula o retorno de uma tabela de saídas
+	outputs := L.NewTable()
+	L.SetField(outputs, "url", lua.LString("http://example-app.com"))
+	L.SetField(outputs, "bucket_name", lua.LString("my-static-content-bucket"))
+	L.Push(outputs)
+	return 1
+}
+
+// stack:config(key, value, is_secret)
+func pulumiStackConfig(L *lua.LState) int {
+	stack := checkPulumiStack(L, 1)
+	key := L.CheckString(2)
+	value := L.CheckString(3)
+	isSecret := L.OptBool(4, false)
+
+	args := []string{"config", "set", key, value, "--stack", stack.Name}
+	if isSecret {
+		args = append(args, "--secret")
 	}
 
-	var goOutputs map[string]interface{}
-	jsonErr := json.Unmarshal(stdoutBuf.Bytes(), &goOutputs)
-	if jsonErr != nil {
-		L.Push(lua.LNil) // No outputs table
-		L.Push(lua.LString(fmt.Sprintf("failed to parse pulumi outputs JSON: %s, raw stdout: %s", jsonErr.Error(), stdoutBuf.String())))
-		return 2
+	// O comando 'pulumi' deve ser executado no diretório de trabalho da stack.
+	pulumiPath := "pulumi"
+
+	cmd := exec.Command(pulumiPath, args...)
+	cmd.Dir = stack.WorkDir
+	cmd.Env = os.Environ()
+
+	if stack.VenvPath != "" {
+		cmd.Env = append(cmd.Env, "VIRTUAL_ENV="+stack.VenvPath)
+		newPath := filepath.Join(stack.VenvPath, "bin") + ":" + os.Getenv("PATH")
+		pathUpdated := false
+		for i, v := range cmd.Env {
+			if strings.HasPrefix(v, "PATH=") {
+				cmd.Env[i] = "PATH=" + newPath
+				pathUpdated = true
+				break
+			}
+		}
+		if !pathUpdated {
+			cmd.Env = append(cmd.Env, "PATH="+newPath)
+		}
 	}
 
-	luaOutputs := GoValueToLua(L, goOutputs)
-	L.Push(luaOutputs)
-	L.Push(lua.LNil) // No error
-	return 2
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("success", lua.LBool(success))
+	L.Push(result)
+	return 1
+}
+
+var pulumiMethods = map[string]lua.LGFunction{
+	"stack": pulumiStackFn,
+}
+
+var pulumiStackMethods = map[string]lua.LGFunction{
+	"up":      pulumiStackUp,
+	"preview": pulumiStackPreview,
+	"destroy": pulumiStackDestroy,
+	"outputs": pulumiStackOutputs,
+	"config":  pulumiStackConfig,
+	"select":  pulumiStackSelect, // Novo método adicionado
+}
+
+// stack:select({ create = true })
+func pulumiStackSelect(L *lua.LState) int {
+	stack := checkPulumiStack(L, 1)
+
+	args := []string{"stack", "select", stack.Name}
+	if lua.LVAsBool(L.OptTable(2, L.NewTable()).RawGetString("create")) {
+		args = append(args, "--create")
+	}
+
+	pulumiPath := "pulumi"
+
+	cmd := exec.Command(pulumiPath, args...)
+	cmd.Dir = stack.WorkDir
+	cmd.Env = os.Environ()
+
+	if stack.VenvPath != "" {
+		cmd.Env = append(cmd.Env, "VIRTUAL_ENV="+stack.VenvPath)
+		newPath := filepath.Join(stack.VenvPath, "bin") + ":" + os.Getenv("PATH")
+		pathUpdated := false
+		for i, v := range cmd.Env {
+			if strings.HasPrefix(v, "PATH=") {
+				cmd.Env[i] = "PATH=" + newPath
+				pathUpdated = true
+				break
+			}
+		}
+		if !pathUpdated {
+			cmd.Env = append(cmd.Env, "PATH="+newPath)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("success", lua.LBool(success))
+	L.Push(result)
+	return 1
+}
+
+func PulumiLoader(L *lua.LState) int {
+	// Registra o tipo 'pulumiStack' com seus métodos
+	mt := L.NewTypeMetatable(luaPulumiStackTypeName)
+	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), pulumiStackMethods))
+
+	// Registra o módulo 'pulumi' com seu método construtor
+	mod := L.SetFuncs(L.NewTable(), pulumiMethods)
+	L.Push(mod)
+	return 1
+}
+
+func OpenPulumi(L *lua.LState) {
+	L.PreloadModule("pulumi", PulumiLoader)
 }

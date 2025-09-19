@@ -10,19 +10,19 @@ command = function()
     -- Teste 1: Executando comandos no minion 'keiteguica'
     log.info("Testando alvo único: keiteguica")
     -- Encadeia o comando ping() para o alvo 'keiteguica'
-    salt.target('keiteguica'):ping()
+    salt.target('keiteguica', 'glob'):ping()
 
     log.info("--------------------------------------------------")
 
     -- Teste 2: Executando comandos em múltiplos minions usando globbing
     log.info("Testando alvo com glob: vm-gcp-squid-proxy*")
     -- Encadeia os comandos ping() e cmd() para alvos que correspondem ao padrão
-    salt.target('vm-gcp-squid-proxy*'):ping():cmd('pkg.upgrade')
+    salt.target('vm-gcp-squid-proxy*', 'glob'):ping():cmd('pkg.upgrade')
 
     log.info("Teste da API fluente do Salt concluído.")
 
     log.info("Executando 'ls -la' via Salt e tratando a saída...")
-    local result_stdout, result_stderr, result_err = salt.target('keiteguica'):cmd('cmd.run', 'ls -la'):result()
+    local result_stdout, result_stderr, result_err = salt.target('keiteguica', 'glob'):cmd('cmd.run', 'ls -la'):result()
 
     if result_err ~= nil then
         log.error("Erro ao executar 'ls -la' via Salt: " .. result_err)

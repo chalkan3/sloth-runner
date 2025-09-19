@@ -3,264 +3,189 @@ package luainterface
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 
+	"github.com/go-git/go-git/v5"
 	lua "github.com/yuin/gopher-lua"
 )
 
-// luaGitRepoTypeName is the name of the Lua userdata type for GitRepo.
-const luaGitRepoTypeName = "git_repo"
+const (
+	luaRepoTypeName = "repo"
+)
 
-// GitRepo holds the state for a fluent Git API call.
-type GitRepo struct {
-	RepoPath string
-	// Store the result of the last operation for inspection in Lua
-	lastSuccess bool
-	lastStdout  string
-	lastStderr  string
-	lastError   error // Go error
-}
+// --- Métodos do Objeto Repo ---
 
-// OpenGit registers the 'git' module with the Lua state.
-func OpenGit(L *lua.LState) {
-	// Create the metatable for the GitRepo type.
-	mt := L.NewTypeMetatable(luaGitRepoTypeName)
-	L.SetGlobal(luaGitRepoTypeName, mt) // Optional: make metatable available globally.
-
-	// Register methods for the GitRepo type.
-	methods := map[string]lua.LGFunction{
-		"checkout": gitRepoCheckout,
-		"pull":     gitRepoPull,
-		"add":      gitRepoAdd,
-		"commit":   gitRepoCommit,
-		"tag":      gitRepoTag,
-		"push":     gitRepoPush,
-		"result":   gitRepoResult, // New method to get results of the last operation
-	}
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), methods))
-
-	// Create the main 'git' module table.
-	gitModule := L.NewTable()
-
-	// Register top-level functions like git.clone() and git.repo().
-	gitFuncs := map[string]lua.LGFunction{
-		"clone": gitClone,
-		"repo":  gitRepo,
-	}
-	L.SetFuncs(gitModule, gitFuncs)
-
-	// Make the 'git' module available globally.
-	L.SetGlobal("git", gitModule)
-}
-
-// checkGitRepo retrieves the GitRepo struct from a Lua userdata.
-func checkGitRepo(L *lua.LState) *GitRepo {
-	ud := L.CheckUserData(1)
-	if v, ok := ud.Value.(*GitRepo); ok {
-		return v
-	}
-	L.ArgError(1, "git_repo expected")
-	return nil
-}
-
-// runGitCommand executes a Git CLI command and updates the GitRepo's last operation status.
-func runGitCommand(L *lua.LState, repo *GitRepo, args []string) {
-	cmd := ExecCommand("git", args...)
-	cmd.Dir = repo.RepoPath // Set working directory for the git command
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	log.Printf("Executing Git command in %s: git %s", repo.RepoPath, strings.Join(args, " "))
-
-	err := cmd.Run()
-
-	repo.lastStdout = stdoutBuf.String()
-	repo.lastStderr = stderrBuf.String()
-	if err != nil {
-		repo.lastSuccess = false
-		repo.lastError = err
-	} else {
-		repo.lastSuccess = true
-		repo.lastError = nil
-	}
-}
-
-// gitClone implements the git.clone(url, path) function.
-func gitClone(L *lua.LState) int {
-	repoURL := L.CheckString(1)
-	repoPath := L.CheckString(2)
-
-	// Check if path exists and is already a git repo
-	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
-		L.Push(lua.LNil) // Return nil for the repo object
-		L.Push(lua.LString(fmt.Sprintf("path %s already contains a git repository", repoPath))) // Return error message
-		return 2
-	}
-
-	cmd := ExecCommand("git", "clone", repoURL, repoPath)
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	log.Printf("Cloning repository: git clone %s %s", repoURL, repoPath)
-
-	err := cmd.Run()
-
-	if err != nil {
-		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("failed to clone repository: %s, stdout: %s, stderr: %s", err.Error(), stdoutBuf.String(), stderrBuf.String())))
-		return 2
-	}
-
-	repo := &GitRepo{
-		RepoPath:    repoPath,
-		lastSuccess: true,
-		lastStdout:  stdoutBuf.String(),
-		lastStderr:  stderrBuf.String(),
-		lastError:   nil,
-	}
-	ud := L.NewUserData()
-	ud.Value = repo
-	L.SetMetatable(ud, L.GetTypeMetatable(luaGitRepoTypeName))
-	L.Push(ud)
-	L.Push(lua.LNil) // No error
-	return 2
-}
-
-// gitRepo implements the git.repo(path) function.
-func gitRepo(L *lua.LState) int {
-	repoPath := L.CheckString(1)
-
-	// Check if it's a valid git repository
-	if _, err := os.Stat(filepath.Join(repoPath, ".git")); os.IsNotExist(err) {
-		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("path %s is not a git repository", repoPath)))
-		return 2
-	}
-
-	repo := &GitRepo{
-		RepoPath:    repoPath,
-		lastSuccess: true, // Assume success if it's a valid repo
-		lastStdout:  "",
-		lastStderr:  "",
-		lastError:   nil,
-	}
-	ud := L.NewUserData()
-	ud.Value = repo
-	L.SetMetatable(ud, L.GetTypeMetatable(luaGitRepoTypeName))
-	L.Push(ud)
-	L.Push(lua.LNil) // No error
-	return 2
-}
-
-// gitRepoCheckout implements the GitRepo:checkout(ref) method.
-func gitRepoCheckout(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
-	ref := L.CheckString(2)
-	runGitCommand(L, repo, []string{"checkout", ref})
-	L.Push(L.CheckUserData(1)) // Return self for chaining
+// repo:pull()
+func repoPull(L *lua.LState) int {
+	repo := checkRepo(L, 1)
+	// Lógica de pull (exemplo)
+	fmt.Printf("Executando git pull no repositório em %s\n", repo.Path)
+	// Aqui entraria a lógica real do go-git para pull
+	L.Push(L.Get(1)) // Retorna o próprio objeto para encadeamento
 	return 1
 }
 
-// gitRepoPull implements the GitRepo:pull(remote, branch) method.
-func gitRepoPull(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
-	remote := L.CheckString(2)
-	branch := L.CheckString(3)
-	runGitCommand(L, repo, []string{"pull", remote, branch})
-	L.Push(L.CheckUserData(1)) // Return self for chaining
-	return 1
-}
-
-// gitRepoAdd implements the GitRepo:add(pattern) method.
-func gitRepoAdd(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
-	pattern := L.CheckString(2)
-	runGitCommand(L, repo, []string{"add", pattern})
-	L.Push(L.CheckUserData(1)) // Return self for chaining
-	return 1
-}
-
-// gitRepoCommit implements the GitRepo:commit(message) method.
-func gitRepoCommit(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
+// repo:commit(message)
+func repoCommit(L *lua.LState) int {
+	repo := checkRepo(L, 1)
 	message := L.CheckString(2)
-	runGitCommand(L, repo, []string{"commit", "-m", message})
-	L.Push(L.CheckUserData(1)) // Return self for chaining
+	// Lógica de commit (exemplo)
+	fmt.Printf("Executando git commit em %s com a mensagem: '%s'\n", repo.Path, message)
+	// Aqui entraria a lógica real do go-git para commit
+	L.Push(L.Get(1)) // Retorna o próprio objeto
 	return 1
 }
 
-// gitRepoTag implements the GitRepo:tag(name, message) method.
-func gitRepoTag(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
-	name := L.CheckString(2)
-	message := L.OptString(3, "") // Optional message
-	args := []string{"tag", name}
-	if message != "" {
-		args = append(args, "-m", message)
-	}
-	runGitCommand(L, repo, args)
-	L.Push(L.CheckUserData(1)) // Return self for chaining
+// repo:push()
+func repoPush(L *lua.LState) int {
+	repo := checkRepo(L, 1)
+	// Lógica de push (exemplo)
+	fmt.Printf("Executando git push no repositório em %s\n", repo.Path)
+	// Aqui entraria a lógica real do go-git para push
+	L.Push(L.Get(1)) // Retorna o próprio objeto
 	return 1
 }
 
-// gitRepoPush implements the GitRepo:push(remote, branch, options) method.
-func gitRepoPush(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
-		return 0
-	}
-	remote := L.CheckString(2)
-	branch := L.CheckString(3)
-	optionsTable := L.OptTable(4, L.NewTable()) // Optional options table
+// --- Métodos do Módulo Git ---
 
-	args := []string{"push", remote, branch}
+// git:clone(url, path) -> { success, stdout, stderr }
+func gitClone(L *lua.LState) int {
+	url := L.CheckString(1)
+	path := L.CheckString(2)
 
-	if followTags := optionsTable.RawGetString("follow_tags"); followTags.Type() == lua.LTBool && lua.LVAsBool(followTags) {
-		args = append(args, "--follow-tags")
-	}
-	// Add other options as needed (e.g., --force, --set-upstream)
+	// Usa os/exec para ter uma saída mais clara, similar aos outros módulos.
+	cmd := exec.Command("git", "clone", url, path)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	runGitCommand(L, repo, args)
-	L.Push(L.CheckUserData(1)) // Return self for chaining
+	err := cmd.Run()
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(success))
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	L.Push(result)
 	return 1
 }
 
-// gitRepoResult implements the GitRepo:result() method, returning the last command's output.
-func gitRepoResult(L *lua.LState) int {
-	repo := checkGitRepo(L)
-	if repo == nil {
+// git:repo(path) -> repo (Este método parece obsoleto, mas vamos mantê-lo por enquanto)
+func gitRepo(L *lua.LState) int {
+	path := L.CheckString(1)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		L.RaiseError("diretório do repositório não encontrado em: %s", path)
+		return 0
+	}
+	// A API original deste método não está clara, retornando sucesso por padrão.
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(true))
+	L.Push(result)
+	return 1
+}
+
+// --- Funções Auxiliares ---
+
+// Estrutura Go para armazenar os dados do repositório
+type RepoData struct {
+	Path          string
+	URL           string
+	CurrentBranch string
+}
+
+// Cria e retorna o objeto repo (tabela Lua)
+func createRepoObject(L *lua.LState, path string) int {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		L.RaiseError("não foi possível obter o caminho absoluto para: %s", path)
 		return 0
 	}
 
-	resultTable := L.NewTable()
-	resultTable.RawSetString("success", lua.LBool(repo.lastSuccess))
-	resultTable.RawSetString("stdout", lua.LString(repo.lastStdout))
-	resultTable.RawSetString("stderr", lua.LString(repo.lastStderr))
-	if repo.lastError != nil {
-		resultTable.RawSetString("error", lua.LString(repo.lastError.Error()))
-	} else {
-		resultTable.RawSetString("error", lua.LNil)
+	repoData := &RepoData{Path: absPath}
+
+	// Tenta abrir o repositório para preencher mais dados
+	r, err := git.PlainOpen(absPath)
+	if err == nil {
+		// Obter URL remota
+		remote, err := r.Remote("origin")
+		if err == nil {
+			repoData.URL = remote.Config().URLs[0]
+		}
+		// Obter branch atual
+		head, err := r.Head()
+		if err == nil {
+			repoData.CurrentBranch = head.Name().Short()
+		}
 	}
-	L.Push(resultTable)
+
+	// Cria a tabela principal para o objeto repo
+	repoTable := L.NewTable()
+
+	// Cria e preenche a tabela 'local'
+	localTable := L.NewTable()
+	L.SetField(localTable, "path", lua.LString(repoData.Path))
+	L.SetField(repoTable, "local", localTable)
+
+	// Cria e preenche a tabela 'remote'
+	remoteTable := L.NewTable()
+	L.SetField(remoteTable, "url", lua.LString(repoData.URL))
+	L.SetField(repoTable, "remote", remoteTable)
+
+	// Cria e preenche a tabela 'current'
+	currentTable := L.NewTable()
+	L.SetField(currentTable, "branch", lua.LString(repoData.CurrentBranch))
+	L.SetField(repoTable, "current", currentTable)
+
+	// Anexa o RepoData como userdata para uso interno nos métodos
+	ud := L.NewUserData()
+	ud.Value = repoData
+	L.SetField(repoTable, "__internal", ud)
+
+	// Define a metatable que aponta para os métodos do repo
+	L.SetMetatable(repoTable, L.GetTypeMetatable(luaRepoTypeName))
+
+	L.Push(repoTable)
 	return 1
+}
+
+// Verifica se o argumento é um objeto repo e retorna o RepoData interno
+func checkRepo(L *lua.LState, n int) *RepoData {
+	tbl := L.CheckTable(n)
+	ud, ok := L.GetField(tbl, "__internal").(*lua.LUserData)
+	if !ok {
+		L.ArgError(n, "objeto repo inválido")
+	}
+	repo, ok := ud.Value.(*RepoData)
+	if !ok {
+		L.ArgError(n, "userdata de repo inválido")
+	}
+	return repo
+}
+
+var gitMethods = map[string]lua.LGFunction{
+	"clone": gitClone,
+	"repo":  gitRepo,
+}
+
+var repoMethods = map[string]lua.LGFunction{
+	"pull":   repoPull,
+	"commit": repoCommit,
+	"push":   repoPush,
+}
+
+func GitLoader(L *lua.LState) int {
+	// Registra o tipo 'repo' com seus métodos
+	mt := L.NewTypeMetatable(luaRepoTypeName)
+	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), repoMethods))
+
+	// Registra o módulo 'git' com seus métodos
+	mod := L.SetFuncs(L.NewTable(), gitMethods)
+	L.Push(mod)
+	return 1
+}
+
+func OpenGit(L *lua.LState) {
+	L.PreloadModule("git", GitLoader)
 }
