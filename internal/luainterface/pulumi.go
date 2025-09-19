@@ -19,15 +19,17 @@ const (
 type pulumiStack struct {
 	Name     string
 	WorkDir  string
-	VenvPath string // Novo campo para o caminho do venv
+	VenvPath string
+	LoginURL string // Novo campo para o URL de login
 }
 
-// pulumi:stack(name, {workdir="path", venv_path="path"}) -> stack
+// pulumi:stack(name, {workdir="path", venv_path="path", login_url="url"}) -> stack
 func pulumiStackFn(L *lua.LState) int {
 	name := L.CheckString(1)
 	opts := L.CheckTable(2)
 	workdir := opts.RawGetString("workdir").String()
-	venvPath := opts.RawGetString("venv_path").String() // Lê o novo campo
+	venvPath := opts.RawGetString("venv_path").String()
+	loginURL := opts.RawGetString("login_url").String() // Lê o novo campo
 
 	if workdir == "" {
 		L.RaiseError("o campo 'workdir' é obrigatório para pulumi:stack")
@@ -37,7 +39,8 @@ func pulumiStackFn(L *lua.LState) int {
 	stack := &pulumiStack{
 		Name:     name,
 		WorkDir:  workdir,
-		VenvPath: venvPath, // Armazena o caminho
+		VenvPath: venvPath,
+		LoginURL: loginURL, // Armazena o URL de login
 	}
 
 	ud := L.NewUserData()
@@ -84,9 +87,14 @@ func runPulumiCommand(L *lua.LState, command string) int {
 		stderrFile = opts.RawGetString("stderr_file")
 	}
 
+	fullCommand := "pulumi " + strings.Join(pulumiArgs, " ")
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	}
+
 	if session != nil {
 		// Execute in shared session
-		fullCommand := "pulumi " + strings.Join(pulumiArgs, " ")
 		stdout, stderr, err := session.ExecuteCommand(fullCommand, stack.WorkDir)
 		success := err == nil
 
@@ -99,8 +107,7 @@ func runPulumiCommand(L *lua.LState, command string) int {
 	}
 
 	// Fallback to isolated execution
-	pulumiPath := "pulumi"
-	cmd := exec.Command(pulumiPath, pulumiArgs...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 
 	var stdout, stderr bytes.Buffer
@@ -166,10 +173,13 @@ func pulumiStackConfig(L *lua.LState) int {
 		args = append(args, "--secret")
 	}
 
-	// O comando 'pulumi' deve ser executado no diretório de trabalho da stack.
-	pulumiPath := "pulumi"
+	fullCommand := "pulumi " + strings.Join(args, " ")
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	}
 
-	cmd := exec.Command(pulumiPath, args...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 	cmd.Env = os.Environ()
 
@@ -254,9 +264,13 @@ func pulumiStackSelect(L *lua.LState) int {
 		args = append(args, "--create")
 	}
 
-	pulumiPath := "pulumi"
+	fullCommand := "pulumi " + strings.Join(args, " ")
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	}
 
-	cmd := exec.Command(pulumiPath, args...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 	cmd.Env = os.Environ()
 
