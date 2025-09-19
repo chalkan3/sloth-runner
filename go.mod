@@ -12,8 +12,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-replace github.com/chalkan3/sloth-runner => .
-
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect

@@ -9,6 +9,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +27,10 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+      - name: Go Mod Tidy
+        run: go mod tidy
+      - name: Go Mod Download
+        run: go mod download
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
