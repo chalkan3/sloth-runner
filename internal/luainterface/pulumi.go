@@ -206,6 +206,34 @@ func pulumiStackConfig(L *lua.LState) int {
 
 var pulumiMethods = map[string]lua.LGFunction{
 	"stack": pulumiStackFn,
+	"login": pulumiLoginFn,
+}
+
+// pulumi:login(url)
+func pulumiLoginFn(L *lua.LState) int {
+	url := L.OptString(1, "")
+
+	pulumiArgs := []string{"login"}
+	if url != "" {
+		pulumiArgs = append(pulumiArgs, url)
+	}
+
+	pulumiPath := "pulumi"
+	cmd := exec.Command(pulumiPath, pulumiArgs...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	success := err == nil
+
+	result := L.NewTable()
+	result.RawSetString("stdout", lua.LString(stdout.String()))
+	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("success", lua.LBool(success))
+	L.Push(result)
+	return 1
 }
 
 var pulumiStackMethods = map[string]lua.LGFunction{
