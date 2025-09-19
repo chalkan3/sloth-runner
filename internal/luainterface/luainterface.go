@@ -562,6 +562,7 @@ func OpenLog(L *lua.LState) {
 
 // OpenAll preloads all available sloth-runner modules into the Lua state.
 func OpenAll(L *lua.LState) {
+	RegisterSharedSessionType(L)
 	OpenExec(L)
 	OpenFs(L)
 	OpenNet(L)
@@ -691,6 +692,7 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 		}
 		groupTable := groupValue.(*lua.LTable)
 		description := groupTable.RawGetString("description").String()
+		workdir := groupTable.RawGetString("workdir").String() // Add this line
 
 		// Parse workdir lifecycle fields
 		createWorkdir := lua.LVAsBool(groupTable.RawGetString("create_workdir_before_run"))
@@ -732,6 +734,7 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 		loadedTaskGroups[groupName] = types.TaskGroup{
 			Description:              description,
 			Tasks:                    tasks,
+			Workdir:                  workdir, // Add this line
 			CreateWorkdirBeforeRun:   createWorkdir,
 			CleanWorkdirAfterRunFunc: cleanWorkdirFunc,
 		}
@@ -848,4 +851,38 @@ func LuaTableToGoMap(L *lua.LState, table *lua.LTable) map[string]interface{} {
 		}
 	})
 	return result
+}
+
+// CopyTable performs a deep copy of a table from one Lua state to another.
+func CopyTable(src *lua.LTable, destL *lua.LState) *lua.LTable {
+	destT := destL.NewTable()
+	src.ForEach(func(key, value lua.LValue) {
+		destKey := CopyValue(key, destL)
+		destValue := CopyValue(value, destL)
+		destL.SetTable(destT, destKey, destValue)
+	})
+	return destT
+}
+
+// CopyValue copies a Lua value from one state to another.
+func CopyValue(value lua.LValue, destL *lua.LState) lua.LValue {
+	switch value.Type() {
+	case lua.LTBool:
+		return lua.LBool(lua.LVAsBool(value))
+	case lua.LTNumber:
+		return lua.LNumber(lua.LVAsNumber(value))
+	case lua.LTString:
+		return lua.LString(lua.LVAsString(value))
+	case lua.LTTable:
+		return CopyTable(value.(*lua.LTable), destL)
+	case lua.LTUserData:
+		// Userdata cannot be safely copied directly. We copy the underlying value if possible.
+		srcUD := value.(*lua.LUserData)
+		destUD := destL.NewUserData()
+		destUD.Value = srcUD.Value // This is a shallow copy of the value
+		return destUD
+	default:
+		// For other types (functions, etc.), we return nil as they cannot be copied.
+		return lua.LNil
+	}
 }

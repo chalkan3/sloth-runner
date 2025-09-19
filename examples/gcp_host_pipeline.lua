@@ -9,10 +9,10 @@ TaskDefinitions = {
     tasks = {
       {
         name = "clone_repository",
-        command = function(params)
+        command = function(params, inputs, session)
           log.info("Cloning repository...")
           local git = require("git")
-          local result = git.clone("https://github.com/chalkan3/gcp-hosts.git", params.workdir)
+          local result = git.clone("https://github.com/chalkan3/gcp-hosts.git", session.workdir)
           if not result.success then
             log.error("Failed to clone repository: " .. result.stderr)
             return false, "Failed to clone repository: " .. result.stderr
@@ -25,10 +25,10 @@ TaskDefinitions = {
         name = "setup_python_env",
         description = "Creates a virtual environment and installs all dependencies.",
         depends_on = "clone_repository",
-        command = function(params)
+        command = function(params, inputs, session)
           log.info("Setting up Python environment...")
           local py = require("python")
-          local venv_path = params.workdir .. "/.venv"
+          local venv_path = session.workdir .. "/.venv"
           local venv = py.venv(venv_path)
           
           log.info("Creating venv...")
@@ -39,7 +39,7 @@ TaskDefinitions = {
           end
           
           log.info("Installing dependencies...")
-          local pip_result = venv:pip("install -r " .. params.workdir .. "/requirements.txt")
+          local pip_result = venv:pip("install -r " .. session.workdir .. "/requirements.txt")
           if not pip_result.success then
             log.error("Failed to install python dependencies: " .. pip_result.stderr)
             return false, "Failed to install python dependencies: " .. pip_result.stderr
@@ -53,11 +53,11 @@ TaskDefinitions = {
         name = "init_stack",
         description = "Initializes the Pulumi stack and passes it to the next task.",
         depends_on = "setup_python_env",
-        command = function(params, inputs)
+        command = function(params, inputs, session)
           log.info("Initializing Pulumi stack...")
           local pulumi = require("pulumi")
           local stack = pulumi.stack("organization/gcp-host/prod", { 
-            workdir = params.workdir, 
+            workdir = session.workdir, 
             venv_path = inputs.setup_python_env.venv_path,
             login_url = 'gs://pulumi-state-backend-chalkan3' 
           })

@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -163,11 +163,13 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession) (taskErr error) {
 	startTime := time.Now()
 
-	// Cria um novo estado Lua para cada tarefa para garantir isolamento.
 	L := lua.NewState()
 	defer L.Close()
-	luainterface.OpenAll(L) // Carrega todos os módulos no novo estado.
-	t.Output = L.NewTable()
+	luainterface.OpenAll(L)
+	
+	localInputFromDependencies := luainterface.CopyTable(inputFromDependencies, L)
+	
+t.Output = L.NewTable()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -187,16 +189,14 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 			Duration: duration,
 			Error:    taskErr,
 		})
-		// Como o estado é local, precisamos converter a saída para o estado principal.
-		// Esta é uma simplificação; uma implementação real pode precisar de uma conversão mais robusta.
-		taskOutputs[t.Name] = t.Output
+		taskOutputs[t.Name] = luainterface.CopyTable(t.Output, tr.L)
 		completedTasks[t.Name] = true
 		delete(runningTasks, t.Name)
 		mu.Unlock()
 	}()
 
 	if t.PreExec != nil {
-		success, msg, _, err := luainterface.ExecuteLuaFunction(L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
+		success, msg, _, err := luainterface.ExecuteLuaFunction(L, t.PreExec, t.Params, localInputFromDependencies, 2, ctx)
 		if err != nil {
 			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing pre_exec hook: %w", err)}
 		} else if !success {
@@ -209,9 +209,10 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 		if session != nil {
 			sessionUD = L.NewUserData()
 			sessionUD.Value = session
+			L.SetMetatable(sessionUD, L.GetTypeMetatable("session"))
 		}
 
-		success, msg, outputTable, err := luainterface.ExecuteLuaFunction(L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx, sessionUD)
+		success, msg, outputTable, err := luainterface.ExecuteLuaFunction(L, t.CommandFunc, t.Params, localInputFromDependencies, 3, ctx, sessionUD)
 		if err != nil {
 			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing command function: %w", err)}
 		} else if !success {
@@ -260,17 +261,17 @@ func (tr *TaskRunner) Run() error {
 	for groupName, group := range filteredGroups {
 		pterm.DefaultSection.Printf("Group: %s (Description: %s)\n", groupName, group.Description)
 
-		// --- Início: Lógica de Gerenciamento do Workdir ---
 		var workdir string
 		var err error
-		if group.CreateWorkdirBeforeRun {
+		if group.Workdir != "" {
+			workdir = group.Workdir
+		} else if group.CreateWorkdirBeforeRun {
 			workdir = filepath.Join(os.TempDir(), groupName)
 			if err := os.RemoveAll(workdir); err != nil {
 				return fmt.Errorf("failed to clean fixed workdir %s: %w", workdir, err)
 			}
 		} else {
-			// Cria um diretório temporário único
-			workdir, err = ioutil.TempDir(os.TempDir(), groupName+"-*")
+			workdir, err = ioutil.TempDir(os.TempDir(), groupName+" -*")
 			if err != nil {
 				return fmt.Errorf("failed to create ephemeral workdir: %w", err)
 			}
@@ -280,281 +281,124 @@ func (tr *TaskRunner) Run() error {
 			return fmt.Errorf("failed to create workdir %s: %w", workdir, err)
 		}
 
-		// Lógica de limpeza adiada
-		defer func() {
-			shouldClean := true // Padrão é limpar
-			if group.CleanWorkdirAfterRunFunc != nil {
-				// Pega o resultado da última tarefa executada no grupo
-				var lastResult types.TaskResult
-				if len(tr.Results) > 0 {
-					lastResult = tr.Results[len(tr.Results)-1]
-				}
-
-				// Converte o resultado para uma tabela Lua para passar para a função
-				resultTable := tr.L.NewTable()
-				resultTable.RawSetString("success", lua.LBool(lastResult.Error == nil))
-				// Adiciona mais campos se necessário no futuro
-
-				success, _, _, err := luainterface.ExecuteLuaFunction(tr.L, group.CleanWorkdirAfterRunFunc, nil, resultTable, 1, context.Background())
-				if err != nil {
-					pterm.Error.Printf("Error executing clean_workdir_after_run for group '%s': %v\n", groupName, err)
-				} else {
-					shouldClean = success
-				}
-			}
-
-			if shouldClean {
-				pterm.Info.Printf("Cleaning up workdir for group '%s': %s\n", groupName, workdir)
-				os.RemoveAll(workdir)
-			} else {
-				pterm.Warning.Printf("Workdir for group '%s' preserved at: %s\n", groupName, workdir)
-			}
-		}()
-		// --- Fim: Lógica de Gerenciamento do Workdir ---
-
-		// SHARED SESSION LOGIC
-		var session *types.SharedSession
-		if group.ExecutionMode == "shared_session" {
-			var err error
-			session, err = NewSharedSession()
-			if err != nil {
-				return fmt.Errorf("failed to create shared session for group '%s': %w", groupName, err)
-			}
-			defer session.Close()
+		session := &types.SharedSession{
+			Workdir: workdir,
 		}
-
-		originalTaskMap := make(map[string]*types.Task)
-		for i := range group.Tasks {
-			task := &group.Tasks[i]
-			// Injeta o workdir nos parâmetros da tarefa
-			if task.Params == nil {
-				task.Params = make(map[string]string)
-			}
-			task.Params["workdir"] = workdir
-			originalTaskMap[task.Name] = task
-		}
-
-		tasksToRun, err := tr.resolveTasksToRun(originalTaskMap, tr.TargetTasks)
-		if err != nil {
-			allGroupErrors = append(allGroupErrors, fmt.Errorf("error resolving tasks for group '%s': %w", groupName, err))
-			continue
-		}
-
-		if len(tasksToRun) == 0 {
-			pterm.Info.Printf("No tasks to run in group '%s' after filtering.\n", groupName)
-			continue
-		}
-
-		taskOutputs := make(map[string]*lua.LTable)
-		completedTasks := make(map[string]bool)
-		runningTasks := make(map[string]bool)
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		errChan := make(chan error, len(tasksToRun))
 
 		taskMap := make(map[string]*types.Task)
-		for _, task := range tasksToRun {
-			taskMap[task.Name] = task
+		for i := range group.Tasks {
+			taskMap[group.Tasks[i].Name] = &group.Tasks[i]
 		}
 
-		// --- Task Execution Loop ---
-		// This loop is simplified for clarity. The original logic for dependency resolution remains.
-		// We will execute tasks sequentially for shared_session mode.
-		if session != nil {
-			// Sequential execution for shared session
-			for _, taskName := range getExecutionOrder(taskMap) { // Assumes getExecutionOrder provides a topologically sorted list of task names
-				task := taskMap[taskName]
-				// Simplified input calculation for this example
-				inputFromDependencies := tr.L.NewTable()
-				// ... (dependency input logic would go here)
+		tasksToRun, err := tr.resolveTasksToRun(taskMap, tr.TargetTasks)
+		if err != nil {
+			return err
+		}
 
-				// Pass the session to the task execution
-				if err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks, session); err != nil {
-					errChan <- err
-					// In sequential execution, we might want to break on failure
+		executionOrder, err := tr.getExecutionOrder(tasksToRun)
+		if err != nil {
+			return err
+		}
+
+		var mu sync.Mutex
+		completedTasks := make(map[string]bool)
+		taskOutputs := make(map[string]*lua.LTable)
+		runningTasks := make(map[string]bool)
+		taskStatus := make(map[string]string)
+		var groupErrors []error
+
+		for _, taskName := range executionOrder {
+			task := taskMap[taskName]
+			runningTasks[task.Name] = true
+
+			// Dependency checks
+			skip := false
+			// Check for success dependencies (depends_on)
+			for _, depName := range task.DependsOn {
+				if status, ok := taskStatus[depName]; !ok || status != "Success" {
+					pterm.Info.Printf("Skipping task '%s' because dependency '%s' did not succeed (status: %s).\n", task.Name, depName, status)
+					skip = true
 					break
 				}
 			}
-		} else {
-			// Original parallel execution logic
-			for {
-				mu.Lock()
-				if len(completedTasks) == len(tasksToRun) {
-					mu.Unlock()
-					break
-				}
-				mu.Unlock()
+			if skip {
+				taskStatus[task.Name] = "Skipped"
+				continue
+			}
 
-				tasksLaunchedThisIteration := 0
-				for _, task := range taskMap {
-					mu.Lock()
-					if completedTasks[task.Name] || runningTasks[task.Name] {
-						mu.Unlock()
-						continue
-					}
-					mu.Unlock()
-
-					dependencyMet := true
-					// Check 'depends_on' dependencies
-					for _, depName := range task.DependsOn {
-						if _, exists := taskMap[depName]; exists {
-							mu.Lock()
-							completed := completedTasks[depName]
-							if !completed {
-								dependencyMet = false
-							} else {
-								var depSuccess bool
-								for _, res := range tr.Results {
-									if res.Name == depName && res.Error == nil {
-										depSuccess = true
-										break
-									}
-								}
-								if !depSuccess {
-									dependencyMet = false
-									tr.Results = append(tr.Results, types.TaskResult{
-										Name:   task.Name,
-										Status: "Skipped",
-										Error:  fmt.Errorf("dependency '%s' failed", depName),
-									})
-									completedTasks[task.Name] = true
-								}
-							}
-							mu.Unlock()
-							if !dependencyMet {
-								break
-							}
-						}
-					}
-
-					// Check 'next_if_fail' dependencies only if 'depends_on' are met
-					if dependencyMet && len(task.NextIfFail) > 0 {
-						nextIfFailMet := false
-						allNextIfFailCompleted := true
-						for _, depName := range task.NextIfFail {
-							if _, exists := taskMap[depName]; exists {
-								mu.Lock()
-								completed := completedTasks[depName]
-								if !completed {
-									allNextIfFailCompleted = false
-								} else {
-									var depFailed bool
-									for _, res := range tr.Results {
-										if res.Name == depName && res.Error != nil {
-											depFailed = true
-											break
-										}
-									}
-									if depFailed {
-										nextIfFailMet = true
-									}
-								}
-								mu.Unlock()
-							}
-						}
-
-						if !allNextIfFailCompleted {
-							dependencyMet = false
-						} else if !nextIfFailMet {
-							dependencyMet = false
-							mu.Lock()
-							tr.Results = append(tr.Results, types.TaskResult{
-								Name:   task.Name,
-								Status: "Skipped",
-								Error:  fmt.Errorf("none of the next_if_fail dependencies for '%s' failed", task.Name),
-							})
-							completedTasks[task.Name] = true
-							mu.Unlock()
-						}
-					}
-
-					if dependencyMet {
-						tasksLaunchedThisIteration++
-						inputFromDependencies := tr.L.NewTable()
-						for _, depName := range task.DependsOn {
-							if _, exists := taskMap[depName]; exists {
-								mu.Lock()
-								depOutput := taskOutputs[depName]
-								mu.Unlock()
-								if depOutput != nil {
-									inputFromDependencies.RawSetString(depName, depOutput)
-								} else {
-									inputFromDependencies.RawSetString(depName, tr.L.NewTable())
-								}
-							}
-						}
-						for _, depName := range task.NextIfFail {
-							if _, exists := taskMap[depName]; exists {
-								mu.Lock()
-								depOutput := taskOutputs[depName]
-								mu.Unlock()
-								if depOutput != nil {
-									inputFromDependencies.RawSetString(depName, depOutput)
-								} else {
-									inputFromDependencies.RawSetString(depName, tr.L.NewTable())
-								}
-							}
-						}
-
-						if task.Async {
-							mu.Lock()
-							runningTasks[task.Name] = true
-							mu.Unlock()
-							wg.Add(1)
-							go func(t *types.Task, input *lua.LTable) {
-								defer wg.Done()
-								if err := tr.executeTaskWithRetries(t, input, &mu, completedTasks, taskOutputs, runningTasks, nil); err != nil {
-									errChan <- err
-								}
-							}(task, inputFromDependencies)
-						} else {
-							mu.Lock()
-							runningTasks[task.Name] = true
-							mu.Unlock()
-							if err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks, nil); err != nil {
-								errChan <- err
-							}
-						}
-					}
-				}
-
-				if tasksLaunchedThisIteration == 0 {
-					mu.Lock()
-					if len(completedTasks) < len(tasksToRun) {
-						uncompletedTasks := []string{}
-						for _, task := range tasksToRun {
-							if !completedTasks[task.Name] {
-								uncompletedTasks = append(uncompletedTasks, task.Name)
-							}
-						}
-						mu.Unlock()
-						circularErr := &TaskExecutionError{TaskName: "group " + groupName, Err: fmt.Errorf("circular dependency or unresolvable tasks. Uncompleted tasks: %v", uncompletedTasks)}
-						log.Println(circularErr.Error())
-						errChan <- circularErr
+			// Check for failure dependencies (next_if_fail)
+			if len(task.NextIfFail) > 0 {
+				allFailDepsFailed := true
+				for _, depName := range task.NextIfFail {
+					if status, ok := taskStatus[depName]; !ok || status != "Failed" {
+						allFailDepsFailed = false
 						break
 					}
-					mu.Unlock()
 				}
-				wg.Wait()
+				if !allFailDepsFailed {
+					pterm.Info.Printf("Skipping task '%s' because not all 'next_if_fail' dependencies failed.\n", task.Name)
+					skip = true
+				}
+			}
+
+			if skip {
+				taskStatus[task.Name] = "Skipped"
+				continue
+			}
+
+			inputFromDependencies := tr.L.NewTable()
+			for _, depName := range task.DependsOn {
+				if output, ok := taskOutputs[depName]; ok {
+					inputFromDependencies.RawSetString(depName, output)
+				}
+			}
+
+			err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks, session)
+			if err != nil {
+				groupErrors = append(groupErrors, err)
+				taskStatus[task.Name] = "Failed"
+			} else {
+				taskStatus[task.Name] = "Success"
 			}
 		}
 
-		close(errChan)
-
-		var groupErrors []error
-		for err := range errChan {
-			groupErrors = append(groupErrors, err)
-		}
-
-		if len(groupErrors) > 0 {
-			allGroupErrors = append(allGroupErrors, fmt.Errorf("task group '%s' encountered errors: %v", groupName, groupErrors))
+		groupHadSuccess := len(groupErrors) == 0
+		if !groupHadSuccess {
+			allGroupErrors = append(allGroupErrors, fmt.Errorf("task group '%s' encountered errors", groupName))
 		}
 
 		mu.Lock()
-		for taskName, outputTable := range taskOutputs {
-			tr.Outputs[taskName] = luainterface.LuaTableToGoMap(tr.L, outputTable)
+		for name, outputTable := range taskOutputs {
+			tr.Outputs[name] = luainterface.LuaTableToGoMap(tr.L, outputTable)
 		}
 		mu.Unlock()
+
+		shouldClean := true
+		if group.CleanWorkdirAfterRunFunc != nil {
+			L := lua.NewState()
+			defer L.Close()
+			luainterface.OpenAll(L)
+
+			resultTable := L.NewTable()
+			resultTable.RawSetString("success", lua.LBool(groupHadSuccess))
+			if !groupHadSuccess && len(groupErrors) > 0 {
+				resultTable.RawSetString("error", lua.LString(groupErrors[0].Error()))
+			}
+
+			success, _, _, err := luainterface.ExecuteLuaFunction(L, group.CleanWorkdirAfterRunFunc, nil, resultTable, 1, context.Background())
+			if err != nil {
+				pterm.Error.Printf("Error executing clean_workdir_after_run for group '%s': %v\n", groupName, err)
+			} else {
+				shouldClean = success
+			}
+		}
+
+		if shouldClean {
+			pterm.Info.Printf("Cleaning up workdir for group '%s': %s\n", groupName, workdir)
+			os.RemoveAll(workdir)
+		} else {
+			pterm.Warning.Printf("Workdir for group '%s' preserved at: %s\n", groupName, workdir)
+		}
 	}
 
 	pterm.DefaultSection.Println("Execution Summary")
@@ -575,23 +419,66 @@ func (tr *TaskRunner) Run() error {
 	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
 	if len(allGroupErrors) > 0 {
-		return fmt.Errorf("one or more task groups failed: %v", allGroupErrors)
+		return fmt.Errorf("one or more task groups failed")
 	}
 	return nil
 }
 
-// Helper function to get a sequential, dependency-respecting order of tasks.
-// NOTE: This is a placeholder for a proper topological sort implementation.
-func getExecutionOrder(taskMap map[string]*types.Task) []string {
-	// This should be a topological sort based on DependsOn.
-	// For this example, we'll use a simplified, hardcoded order.
-	// A real implementation is required here.
-	names := make([]string, 0, len(taskMap))
-	for name := range taskMap {
-		names = append(names, name)
+func (tr *TaskRunner) getExecutionOrder(tasksToRun []*types.Task) ([]string, error) {
+	taskMap := make(map[string]*types.Task)
+	for _, task := range tasksToRun {
+		taskMap[task.Name] = task
 	}
-	// This is NOT a correct sort, just for placeholder.
-	return names
+
+	var order []string
+	visited := make(map[string]bool)
+	recursionStack := make(map[string]bool)
+
+	var visit func(taskName string) error
+	visit = func(taskName string) error {
+		if recursionStack[taskName] {
+			return fmt.Errorf("circular dependency detected: %s", taskName)
+		}
+		if visited[taskName] {
+			return nil
+		}
+
+		recursionStack[taskName] = true
+		visited[taskName] = true
+
+		task := taskMap[taskName]
+		depNames := task.DependsOn
+		sort.Strings(depNames)
+
+		for _, depName := range depNames {
+			if _, ok := taskMap[depName]; !ok {
+				continue
+			}
+			if err := visit(depName); err != nil {
+				return err
+			}
+		}
+
+		order = append(order, taskName)
+		delete(recursionStack, taskName)
+		return nil
+	}
+
+	var taskNames []string
+	for _, task := range tasksToRun {
+		taskNames = append(taskNames, task.Name)
+	}
+	sort.Strings(taskNames)
+
+	for _, taskName := range taskNames {
+		if !visited[taskName] {
+			if err := visit(taskName); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return order, nil
 }
 
 func (tr *TaskRunner) resolveTasksToRun(originalTaskMap map[string]*types.Task, targetTasks []string) ([]*types.Task, error) {
@@ -653,22 +540,16 @@ func (tr *TaskRunner) RunTasksParallel(tasks []*types.Task, input *lua.LTable) (
 		go func(t *types.Task) {
 			defer wg.Done()
 
-			// These maps are for the context of a single parallel execution, not the whole runner
 			completed := make(map[string]bool)
 			outputs := make(map[string]*lua.LTable)
 			running := make(map[string]bool)
 
-			// We use a new mutex for the retry logic within the task execution
 			var taskMu sync.Mutex
 
 			err := tr.executeTaskWithRetries(t, input, &taskMu, completed, outputs, running, nil)
 
-			// Find the result for this specific task. executeTaskWithRetries appends to tr.Results.
-			// This is a bit of a workaround due to the existing structure.
-			// A better long-term solution would be for executeTaskWithRetries to return the TaskResult.
 			mu.Lock()
 			var result types.TaskResult
-			// Search from the end of the results slice as it's the most likely place
 			for i := len(tr.Results) - 1; i >= 0; i-- {
 				if tr.Results[i].Name == t.Name {
 					result = tr.Results[i]
@@ -700,7 +581,6 @@ func (tr *TaskRunner) RunTasksParallel(tasks []*types.Task, input *lua.LTable) (
 	}
 
 	if len(allErrors) > 0 {
-		// Combine multiple errors into one
 		return results, fmt.Errorf("encountered %d errors during parallel execution: %v", len(allErrors), allErrors)
 	}
 
