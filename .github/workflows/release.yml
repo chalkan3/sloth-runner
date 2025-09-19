@@ -31,6 +31,8 @@ jobs:
         run: go mod tidy
       - name: Go Mod Download
         run: go mod download
+      - name: Go Mod Vendor
+        run: go mod vendor
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
