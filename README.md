@@ -437,5 +437,112 @@ Lists all available task groups and tasks defined in a Lua template file.
 *   **`data` module:** Parse and serialize JSON and YAML data.
 *   **`log` module:** Log messages with different severity levels.
 *   **`salt` module:** Execute SaltStack commands.
+*   **`git` module:** Perform Git operations like clone, pull, commit, and push.
+*   **`pulumi` module:** Manage Pulumi stacks and deployments.
+*   **`python` module:** Create and manage Python virtual environments.
+*   **`parallel` module:** Run multiple tasks concurrently.
 
 For detailed API usage, please refer to the examples in the `/examples` directory.
+
+---
+
+## 🚀 Advanced Features
+
+`sloth-runner` provides several advanced features for fine-grained control over task execution.
+
+### Next If Fail
+
+The `next_if_fail` attribute allows you to specify a task that should only be executed if the current task fails. This is useful for cleanup or notification tasks.
+
+<details>
+<summary>Example (`examples/next_if_fail_example.lua`):</summary>
+
+```lua
+TaskDefinitions = {
+    error_handling_workflow = {
+        description = "A workflow to demonstrate the next_if_fail feature.",
+        tasks = {
+            {
+                name = "failing_task",
+                description = "This task is designed to fail.",
+                command = "exit 1"
+            },
+            {
+                name = "cleanup_task",
+                description = "This task runs only if failing_task fails.",
+                next_if_fail = "failing_task",
+                command = "echo 'Cleanup task executed.'"
+            }
+        }
+    }
+}
+```
+</details>
+
+### Workdir Management
+
+You can control the lifecycle of the working directory for each task group.
+
+*   `create_workdir_before_run`: If set to `true`, a temporary directory will be created before the tasks in the group are executed. The path to this directory is available in the `params.workdir` variable in your tasks.
+*   `clean_workdir_after_run`: A Lua function that determines whether the workdir should be deleted after the tasks have finished. It receives the result of the last task as an argument.
+
+<details>
+<summary>Example (`examples/workdir_lifecycle_scenarios.lua`):</summary>
+
+```lua
+TaskDefinitions = {
+    workdir_management_demo = {
+        description = "A workflow to demonstrate workdir management.",
+        create_workdir_before_run = true,
+        clean_workdir_after_run = function(last_result)
+            if not last_result.success then
+                log.error("Task failed. The workdir will be kept for debugging at: " .. last_result.output.workdir)
+            end
+            return last_result.success
+        end,
+        tasks = {
+            {
+                name = "main_task",
+                description = "This task runs inside a temporary workdir.",
+                command = function(params)
+                    local workdir = params.workdir
+                    log.info("Running task in workdir: " .. workdir)
+                    -- Simulate a failure to see the workdir preserved
+                    return false, "Task failed.", { workdir = workdir }
+                end
+            }
+        }
+    }
+}
+```
+</details>
+
+### Shared Session
+
+For tasks that need to share a common shell session (e.g., to share environment variables), you can set `execution_mode = "shared_session"` on the task group.
+
+<details>
+<summary>Example:</summary>
+
+```lua
+TaskDefinitions = {
+    shared_session_demo = {
+        description = "A workflow to demonstrate the shared session feature.",
+        execution_mode = "shared_session",
+        tasks = {
+            {
+                name = "set_env_var",
+                description = "Sets an environment variable in the shared session.",
+                command = "export MY_VAR='hello from shared session'"
+            },
+            {
+                name = "read_env_var",
+                description = "Reads the environment variable from the shared session.",
+                depends_on = "set_env_var",
+                command = "echo $MY_VAR"
+            }
+        }
+    }
+}
+```
+</details>
