@@ -19,15 +19,17 @@ const (
 type pulumiStack struct {
 	Name     string
 	WorkDir  string
-	VenvPath string // Novo campo para o caminho do venv
+	VenvPath string
+	LoginURL string // Campo para o URL de login
 }
 
-// pulumi:stack(name, {workdir="path", venv_path="path"}) -> stack
+// pulumi:stack(name, {workdir="path", venv_path="path", login_url="url"}) -> stack
 func pulumiStackFn(L *lua.LState) int {
 	name := L.CheckString(1)
 	opts := L.CheckTable(2)
 	workdir := opts.RawGetString("workdir").String()
-	venvPath := opts.RawGetString("venv_path").String() // Lê o novo campo
+	venvPath := opts.RawGetString("venv_path").String()
+	loginURL := opts.RawGetString("login_url").String() // Lê o novo campo
 
 	if workdir == "" {
 		L.RaiseError("o campo 'workdir' é obrigatório para pulumi:stack")
@@ -37,11 +39,13 @@ func pulumiStackFn(L *lua.LState) int {
 	stack := &pulumiStack{
 		Name:     name,
 		WorkDir:  workdir,
-		VenvPath: venvPath, // Armazena o caminho
+		VenvPath: venvPath,
+		LoginURL: loginURL, // Armazena o URL de login
 	}
 
 	ud := L.NewUserData()
-	ud.Value = stack
+
+ud.Value = stack
 	L.SetMetatable(ud, L.GetTypeMetatable(luaPulumiStackTypeName))
 	L.Push(ud)
 	return 1
@@ -61,7 +65,6 @@ func checkPulumiStack(L *lua.LState, n int) *pulumiStack {
 func runPulumiCommand(L *lua.LState, command string) int {
 	stack := checkPulumiStack(L, 1)
 
-	// Check if a session object is passed as the third argument
 	var session *types.SharedSession
 	if L.GetTop() >= 3 {
 		if ud, ok := L.Get(3).(*lua.LUserData); ok {
@@ -84,9 +87,13 @@ func runPulumiCommand(L *lua.LState, command string) int {
 		stderrFile = opts.RawGetString("stderr_file")
 	}
 
+	fullCommand := "pulumi " + strings.Join(pulumiArgs, " ")
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	}
+
 	if session != nil {
-		// Execute in shared session
-		fullCommand := "pulumi " + strings.Join(pulumiArgs, " ")
 		stdout, stderr, err := session.ExecuteCommand(fullCommand, stack.WorkDir)
 		success := err == nil
 
@@ -98,9 +105,7 @@ func runPulumiCommand(L *lua.LState, command string) int {
 		return 1
 	}
 
-	// Fallback to isolated execution
-	pulumiPath := "pulumi"
-	cmd := exec.Command(pulumiPath, pulumiArgs...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 
 	var stdout, stderr bytes.Buffer
@@ -146,7 +151,6 @@ func pulumiStackDestroy(L *lua.LState) int {
 func pulumiStackOutputs(L *lua.LState) int {
 	stack := checkPulumiStack(L, 1)
 	fmt.Printf("Obtendo saídas (outputs) para a stack '%s' em '%s'\n", stack.Name, stack.WorkDir)
-	// Simula o retorno de uma tabela de saídas
 	outputs := L.NewTable()
 	L.SetField(outputs, "url", lua.LString("http://example-app.com"))
 	L.SetField(outputs, "bucket_name", lua.LString("my-static-content-bucket"))
@@ -161,15 +165,22 @@ func pulumiStackConfig(L *lua.LState) int {
 	value := L.CheckString(3)
 	isSecret := L.OptBool(4, false)
 
-	args := []string{"config", "set", key, value, "--stack", stack.Name}
+	// O valor deve ser colocado entre aspas para ser passado com segurança para o shell.
+	quotedValue := fmt.Sprintf("'%s'", value)
+
+	configCmdParts := []string{"pulumi", "config", "set", key, quotedValue, "--stack", stack.Name}
 	if isSecret {
-		args = append(args, "--secret")
+		configCmdParts = append(configCmdParts, "--secret")
+	}
+	configCmd := strings.Join(configCmdParts, " ")
+
+	fullCommand := configCmd
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
 	}
 
-	// O comando 'pulumi' deve ser executado no diretório de trabalho da stack.
-	pulumiPath := "pulumi"
-
-	cmd := exec.Command(pulumiPath, args...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 	cmd.Env = os.Environ()
 
@@ -242,7 +253,7 @@ var pulumiStackMethods = map[string]lua.LGFunction{
 	"destroy": pulumiStackDestroy,
 	"outputs": pulumiStackOutputs,
 	"config":  pulumiStackConfig,
-	"select":  pulumiStackSelect, // Novo método adicionado
+	"select":  pulumiStackSelect,
 }
 
 // stack:select({ create = true })
@@ -254,9 +265,13 @@ func pulumiStackSelect(L *lua.LState) int {
 		args = append(args, "--create")
 	}
 
-	pulumiPath := "pulumi"
+	fullCommand := "pulumi " + strings.Join(args, " ")
+	if stack.LoginURL != "" {
+		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
+		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	}
 
-	cmd := exec.Command(pulumiPath, args...)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 	cmd.Env = os.Environ()
 
@@ -292,11 +307,9 @@ func pulumiStackSelect(L *lua.LState) int {
 }
 
 func PulumiLoader(L *lua.LState) int {
-	// Registra o tipo 'pulumiStack' com seus métodos
 	mt := L.NewTypeMetatable(luaPulumiStackTypeName)
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), pulumiStackMethods))
 
-	// Registra o módulo 'pulumi' com seu método construtor
 	mod := L.SetFuncs(L.NewTable(), pulumiMethods)
 	L.Push(mod)
 	return 1
