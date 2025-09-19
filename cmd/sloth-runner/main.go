@@ -308,7 +308,17 @@ var (
 	yes            bool
 	outputFile     string
 	templateName   string
+	version        = "dev" // será substituído em tempo de compilação
 )
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number of sloth-runner",
+	Long:  `All software has versions. This is sloth-runner's`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(version)
+	},
+}
 
 func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string, isProduction bool, valuesFilePath string, tr types.TaskRunner) (map[string]types.TaskGroup, error) {
 	templateContent, err := ioutil.ReadFile(configFilePath)
@@ -491,7 +501,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 					Message: "Select tasks to run:",
 					Options: allTasks,
 				}
-				survey.AskOne(prompt, &targetTasks)
+			survey.AskOne(prompt, &targetTasks)
 			}
 		}
 		if len(targetTasks) == 0 {
@@ -582,6 +592,7 @@ var validateCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
 	templateCmd.AddCommand(templateListCmd)
 	rootCmd.AddCommand(newCmd)
