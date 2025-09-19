@@ -1,9 +1,21 @@
 package luainterface
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 )
+
+// RunCommand executes a command and returns its stdout, stderr, and error.
+func RunCommand(name string, args ...string) (string, string, error) {
+	cmd := exec.Command(name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
 
 // SaltKeyAction performs a salt-key action.
 func SaltKeyAction(args ...string) (string, error) {
@@ -13,7 +25,7 @@ func SaltKeyAction(args ...string) (string, error) {
 	}
 	if stderr != "" {
 		// salt-key often prints non-error info to stderr, but we return it anyway
-		return stdout, fmt.Errorf(stderr)
+		return stdout, fmt.Errorf("%s", stderr)
 	}
 	return stdout, nil
 }
@@ -25,7 +37,7 @@ func SaltRunAction(args ...string) (string, error) {
 		return "", fmt.Errorf("command failed: %w, stderr: %s", err, stderr)
 	}
 	if stderr != "" {
-		return stdout, fmt.Errorf(stderr)
+		return stdout, fmt.Errorf("%s", stderr)
 	}
 	return stdout, nil
 }
@@ -37,7 +49,7 @@ func SaltPing(minionID string) (bool, error) {
 		return false, fmt.Errorf("command failed: %w, stderr: %s", err, stderr)
 	}
 	if stderr != "" {
-		return false, fmt.Errorf(stderr)
+		return false, fmt.Errorf("%s", stderr)
 	}
 
 	var result map[string]bool
