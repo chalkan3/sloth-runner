@@ -140,15 +140,16 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		if t.Timeout != "" {
 			timeout, err := time.ParseDuration(t.Timeout)
 			if err != nil {
+				spinner.Fail(fmt.Sprintf("Task '%s' has invalid timeout: %v", t.Name, err))
 				return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid timeout duration: %w", err)}
 			}
 			ctx, cancel = context.WithTimeout(context.Background(), timeout)
 		} else {
 			ctx, cancel = context.WithCancel(context.Background())
 		}
-		defer cancel()
 
 		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks, session)
+		cancel() // Cancel the context as soon as the task is done
 
 		if taskErr == nil {
 			spinner.Success(fmt.Sprintf("Task '%s' completed successfully", t.Name))
