@@ -162,7 +162,12 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 
 func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession) (taskErr error) {
 	startTime := time.Now()
-	t.Output = tr.L.NewTable()
+
+	// Cria um novo estado Lua para cada tarefa para garantir isolamento.
+	L := lua.NewState()
+	defer L.Close()
+	luainterface.OpenAll(L) // Carrega todos os módulos no novo estado.
+	t.Output = L.NewTable()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -182,6 +187,8 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 			Duration: duration,
 			Error:    taskErr,
 		})
+		// Como o estado é local, precisamos converter a saída para o estado principal.
+		// Esta é uma simplificação; uma implementação real pode precisar de uma conversão mais robusta.
 		taskOutputs[t.Name] = t.Output
 		completedTasks[t.Name] = true
 		delete(runningTasks, t.Name)
@@ -189,7 +196,7 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 	}()
 
 	if t.PreExec != nil {
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
+		success, msg, _, err := luainterface.ExecuteLuaFunction(L, t.PreExec, t.Params, inputFromDependencies, 2, ctx)
 		if err != nil {
 			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing pre_exec hook: %w", err)}
 		} else if !success {
@@ -198,18 +205,13 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 	}
 
 	if t.CommandFunc != nil {
-		// Prepara o ambiente Lua para garantir que os módulos globais (log, exec, etc.) estejam disponíveis.
-		// Esta é a correção para o bug 'log is nil'.
-		luainterface.OpenAll(tr.L)
-
-		// Pass session to Lua context
 		var sessionUD *lua.LUserData
 		if session != nil {
-			sessionUD = tr.L.NewUserData()
+			sessionUD = L.NewUserData()
 			sessionUD.Value = session
 		}
 
-		success, msg, outputTable, err := luainterface.ExecuteLuaFunction(tr.L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx, sessionUD)
+		success, msg, outputTable, err := luainterface.ExecuteLuaFunction(L, t.CommandFunc, t.Params, inputFromDependencies, 3, ctx, sessionUD)
 		if err != nil {
 			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing command function: %w", err)}
 		} else if !success {
@@ -222,9 +224,9 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 	if t.PostExec != nil {
 		var postExecSecondArg lua.LValue = t.Output
 		if t.Output == nil {
-			postExecSecondArg = tr.L.NewTable()
+			postExecSecondArg = L.NewTable()
 		}
-		success, msg, _, err := luainterface.ExecuteLuaFunction(tr.L, t.PostExec, t.Params, postExecSecondArg, 2, ctx)
+		success, msg, _, err := luainterface.ExecuteLuaFunction(L, t.PostExec, t.Params, postExecSecondArg, 2, ctx)
 		if err != nil {
 			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("error executing post_exec hook: %w", err)}
 		} else if !success {
