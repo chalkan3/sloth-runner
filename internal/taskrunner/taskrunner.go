@@ -198,6 +198,10 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 	}
 
 	if t.CommandFunc != nil {
+		// Prepara o ambiente Lua para garantir que os módulos globais (log, exec, etc.) estejam disponíveis.
+		// Esta é a correção para o bug 'log is nil'.
+		luainterface.OpenAll(tr.L)
+
 		// Pass session to Lua context
 		var sessionUD *lua.LUserData
 		if session != nil {
