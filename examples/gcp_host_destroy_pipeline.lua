@@ -3,7 +3,7 @@ TaskDefinitions = {
     description = "Destroys the gcp-hosts project infrastructure.",
     workdir = '/tmp/gcp-host-deployment', 
     execution_mode = "shared_session",
-    clean_workdir_after_run = function(r) 
+    clean_workdir_after_run = function(params, r) 
       log.info("Checking if workdir should be cleaned. Success: " .. tostring(r.success))
       return r.success 
     end,
