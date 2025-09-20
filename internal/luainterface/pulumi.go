@@ -49,7 +49,29 @@ func setupPulumiCmd(stack *pulumiStack, commandParts ...string) *exec.Cmd {
 
 	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
-	cmd.Env = os.Environ()
+
+	// Prepend Pulumi bin to PATH
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Handle error, maybe log it or return an error
+	}
+	pulumiPath := filepath.Join(homeDir, ".pulumi", "bin")
+	newPath := fmt.Sprintf("PATH=%s:%s", pulumiPath, os.Getenv("PATH"))
+
+	// Create a new environment slice and add the modified PATH
+	env := os.Environ()
+	found := false
+	for i, v := range env {
+		if strings.HasPrefix(v, "PATH=") {
+			env[i] = newPath
+			found = true
+			break
+		}
+	}
+	if !found {
+		env = append(env, newPath)
+	}
+	cmd.Env = env
 
 	return cmd
 }
