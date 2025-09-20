@@ -56,7 +56,8 @@ TaskDefinitions = {
         command = function(params, inputs, session)
           log.info("Initializing Pulumi stack...")
           local pulumi = require("pulumi")
-          local stack = pulumi.stack("organization/gcp-host/prod", { 
+          local stack_name = "organization/gcp-host/prod"
+          local stack = pulumi.stack(stack_name, { 
             workdir = session.workdir, 
             venv_path = inputs.setup_python_env.venv_path,
             login_url = 'gs://pulumi-state-backend-chalkan3' 
@@ -69,7 +70,12 @@ TaskDefinitions = {
           end
           
           log.info("Pulumi stack selected.")
-          return true, "Pulumi stack selected.", { stack = stack }
+          return true, "Pulumi stack selected.", { 
+            stack_name = stack_name,
+            workdir = session.workdir,
+            venv_path = inputs.setup_python_env.venv_path,
+            login_url = 'gs://pulumi-state-backend-chalkan3'
+          }
         end
       },
       {
@@ -78,7 +84,13 @@ TaskDefinitions = {
         depends_on = "init_stack",
         command = function(params, inputs)
           log.info("Configuring Pulumi...")
-          local stack = inputs.init_stack.stack
+          local pulumi = require("pulumi")
+          local stack_info = inputs.init_stack
+          local stack = pulumi.stack(stack_info.stack_name, {
+            workdir = stack_info.workdir,
+            venv_path = stack_info.venv_path,
+            login_url = stack_info.login_url
+          })
           
           local configs = {
             { "gcp:project", "chalkan3" },
@@ -101,7 +113,7 @@ TaskDefinitions = {
           end
 
           log.info("Pulumi configured.")
-          return true, "Stack Configurated", { stack = stack }
+          return true, "Stack Configurated", inputs.init_stack
         end
       },
       {
@@ -110,7 +122,13 @@ TaskDefinitions = {
         depends_on = "configure_pulumi",
         command = function(params, inputs)
           log.info("Deploying Pulumi stack...")
-          local stack = inputs.configure_pulumi.stack
+          local pulumi = require("pulumi")
+          local stack_info = inputs.configure_pulumi
+          local stack = pulumi.stack(stack_info.stack_name, {
+            workdir = stack_info.workdir,
+            venv_path = stack_info.venv_path,
+            login_url = stack_info.login_url
+          })
           
           local result = stack:up({ yes = true, skip_preview = true })
           if not result.success then
