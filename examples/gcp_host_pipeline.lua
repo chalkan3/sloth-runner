@@ -11,6 +11,7 @@ TaskDefinitions = {
         name = "clone_repository",
         command = function(params, inputs, session)
           log.info("Cloning repository...")
+          os.execute("rm -rf " .. session.workdir)
           local git = require("git")
           local result = git.clone("https://github.com/chalkan3/gcp-hosts.git", session.workdir)
           if not result.success then
@@ -46,7 +47,7 @@ TaskDefinitions = {
           end
 
           log.info("Python environment created.")
-          return true, "Python environment created.", { venv_path = venv_path }
+          return true, "Python environment created.", { venv_path = venv_path }, { venv_path = venv_path }
         end
       },
       {
