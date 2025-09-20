@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -71,7 +71,7 @@ func GoValueToLua(L *lua.LState, value interface{}) lua.LValue {
 			if strKey, ok := key.(string); ok {
 				tbl.RawSetString(strKey, GoValueToLua(L, elem))
 			} else {
-				log.Printf("Warning: Non-string key encountered in YAML map: %v", key)
+				slog.Warn("Non-string key encountered in YAML map, skipping", "key", key)
 			}
 		}
 		return tbl
@@ -474,6 +474,8 @@ func luaExecRun(L *lua.LState) int {
 		ctx = context.Background()
 	}
 
+	slog.Debug("executing command", "source", "lua", "command", commandStr)
+
 	cmd := exec.CommandContext(ctx, "bash", "-c", commandStr)
 
 	// Set workdir from options
@@ -496,10 +498,20 @@ func luaExecRun(L *lua.LState) int {
 	err := cmd.Run()
 	success := err == nil
 
+	stdoutStr := stdout.String()
+	stderrStr := stderr.String()
+
+	if stdoutStr != "" {
+		slog.Info(stdoutStr, "source", "lua", "stream", "stdout")
+	}
+	if stderrStr != "" {
+		slog.Warn(stderrStr, "source", "lua", "stream", "stderr")
+	}
+
 	result := L.NewTable()
 	result.RawSetString("success", lua.LBool(success))
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("stdout", lua.LString(stdoutStr))
+	result.RawSetString("stderr", lua.LString(stderrStr))
 	L.Push(result)
 	return 1
 }
@@ -521,25 +533,25 @@ func OpenExec(L *lua.LState) {
 // --- Log Module ---
 func luaLogInfo(L *lua.LState) int {
 	message := L.CheckString(1)
-	log.Printf("[INFO] %s", message)
+	slog.Info(message, "source", "lua")
 	return 0
 }
 
 func luaLogWarn(L *lua.LState) int {
 	message := L.CheckString(1)
-	log.Printf("[WARN] %s", message)
+	slog.Warn(message, "source", "lua")
 	return 0
 }
 
 func luaLogError(L *lua.LState) int {
 	message := L.CheckString(1)
-	log.Printf("[ERROR] %s", message)
+	slog.Error(message, "source", "lua")
 	return 0
 }
 
 func luaLogDebug(L *lua.LState) int {
 	message := L.CheckString(1)
-	log.Printf("[DEBUG] %s", message)
+	slog.Debug(message, "source", "lua")
 	return 0
 }
 
@@ -687,7 +699,7 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 	globalTaskDefs.(*lua.LTable).ForEach(func(groupKey, groupValue lua.LValue) {
 		groupName := groupKey.String()
 		if groupValue.Type() != lua.LTTable {
-			log.Printf("Warning: Expected group '%s' to be a table, skipping.", groupName)
+			slog.Warn("Expected group to be a table, skipping", "group", groupName)
 			return
 		}
 		groupTable := groupValue.(*lua.LTable)
@@ -703,7 +715,7 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 		if luaTasks.Type() == lua.LTTable {
 			luaTasks.(*lua.LTable).ForEach(func(taskKey, taskValue lua.LValue) {
 				if taskValue.Type() != lua.LTTable {
-					log.Printf("Warning: Expected task entry in group '%s' to be a table, skipping.", groupName)
+					slog.Warn("Expected task entry to be a table, skipping", "group", groupName)
 					return
 				}
 				taskTable := taskValue.(*lua.LTable)

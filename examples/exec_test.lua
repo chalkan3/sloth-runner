@@ -26,13 +26,13 @@ TaskDefinitions = {
             },
             {
                 name = "run_echo_command",
-                description = "Runs a simple echo command using exec.command",
+                description = "Runs a simple echo command using exec.run",
                 command = function(params, input)
-                    local stdout, stderr, err = exec.command("echo", "Hello from exec!")
-                    if err then
-                        return false, "Command failed: " .. err .. " Stderr: " .. stderr, nil
+                    local result = exec.run("echo 'Hello from exec!'")
+                    if not result.success then
+                        return false, "Command failed: " .. result.stderr
                     else
-                        return true, "Command executed successfully", {stdout = stdout, stderr = stderr}
+                        return true, "Command executed successfully", {stdout = result.stdout, stderr = result.stderr}
                     end
                 end,
                 async = false,
@@ -40,13 +40,13 @@ TaskDefinitions = {
             },
             {
                 name = "list_files",
-                description = "Lists files in the current directory using exec.command",
+                description = "Lists files in the current directory using exec.run",
                 command = function(params, input)
-                    local stdout, stderr, err = exec.command("ls", "-l")
-                    if err then
-                        return false, "ls command failed: " .. err .. " Stderr: " .. stderr, nil
+                    local result = exec.run("ls -l")
+                    if not result.success then
+                        return false, "ls command failed: " .. result.stderr
                     else
-                        return true, "ls command executed successfully", {stdout = stdout, stderr = stderr}
+                        return true, "ls command executed successfully", {stdout = result.stdout, stderr = result.stderr}
                     end
                 end,
                 async = false,

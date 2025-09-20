@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"text/template"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 
@@ -620,9 +622,12 @@ func init() {
 }
 
 func main() {
-	rootCmd.SilenceUsage = true // Suprime a ajuda em erros de execução
+	// Use pterm's slog handler to make logs coexist with the live dashboard
+	slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+
+	rootCmd.SilenceUsage = true // Suppress help on execution errors
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		slog.Error("execution failed", "err", err)
 		os.Exit(1)
 	}
 }

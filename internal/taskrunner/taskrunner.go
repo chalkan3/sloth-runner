@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,7 +125,6 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	}
 
 	var taskErr error
-	var spinner *pterm.SpinnerPrinter
 
 	for i := 0; i <= t.Retries; i++ {
 		if i > 0 {
@@ -132,7 +132,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 			time.Sleep(1 * time.Second)
 		}
 
-		spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("Executing task: %s", t.Name))
+		slog.Info("starting task", "task", t.Name, "attempt", i+1, "retries", t.Retries)
 
 		var ctx context.Context
 		var cancel context.CancelFunc
@@ -151,12 +151,12 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks, session)
 
 		if taskErr == nil {
-			spinner.Success(fmt.Sprintf("Task '%s' completed successfully", t.Name))
+			slog.Info("task finished", "task", t.Name, "status", "success")
 			return nil // Success
 		}
 	}
 
-	spinner.Fail(fmt.Sprintf("Task '%s' failed after %d retries: %v", t.Name, t.Retries, taskErr))
+	slog.Error("task failed", "task", t.Name, "retries", t.Retries, "err", taskErr)
 	return taskErr // Final failure
 }
 
@@ -240,11 +240,10 @@ t.Output = L.NewTable()
 
 func (tr *TaskRunner) Run() error {
 	if len(tr.TaskGroups) == 0 {
-		pterm.Warning.Println("No task groups defined.")
+		slog.Warn("No task groups defined.")
 		return nil
 	}
 
-	pterm.DefaultHeader.Println("Executing Tasks")
 	var allGroupErrors []error
 
 	filteredGroups := make(map[string]types.TaskGroup)
@@ -259,7 +258,7 @@ func (tr *TaskRunner) Run() error {
 	}
 
 	for groupName, group := range filteredGroups {
-		pterm.DefaultSection.Printf("Group: %s (Description: %s)\n", groupName, group.Description)
+		slog.Info("starting group", "group", groupName, "description", group.Description)
 
 		var workdir string
 		var err error
@@ -271,7 +270,7 @@ func (tr *TaskRunner) Run() error {
 				return fmt.Errorf("failed to clean fixed workdir %s: %w", workdir, err)
 			}
 		} else {
-			workdir, err = ioutil.TempDir(os.TempDir(), groupName+" -*")
+			workdir, err = ioutil.TempDir(os.TempDir(), groupName+"-*")
 			if err != nil {
 				return fmt.Errorf("failed to create ephemeral workdir: %w", err)
 			}
@@ -300,6 +299,9 @@ func (tr *TaskRunner) Run() error {
 			return err
 		}
 
+		p, _ := pterm.DefaultProgressbar.WithTotal(len(executionOrder)).WithTitle("Executing tasks").Start()
+		defer p.Stop()
+
 		var mu sync.Mutex
 		completedTasks := make(map[string]bool)
 		taskOutputs := make(map[string]*lua.LTable)
@@ -308,41 +310,22 @@ func (tr *TaskRunner) Run() error {
 		var groupErrors []error
 
 		for _, taskName := range executionOrder {
+			p.UpdateTitle("Executing task: " + taskName)
 			task := taskMap[taskName]
 			runningTasks[task.Name] = true
 
 			// Dependency checks
 			skip := false
-			// Check for success dependencies (depends_on)
 			for _, depName := range task.DependsOn {
-				if status, ok := taskStatus[depName]; !ok || status != "Success" {
-					pterm.Info.Printf("Skipping task '%s' because dependency '%s' did not succeed (status: %s).\n", task.Name, depName, status)
+				if status, ok := taskStatus[depName]; !ok || (status != "Success" && status != "Skipped") {
+					slog.Warn("Skipping task due to dependency failure", "task", task.Name, "dependency", depName, "dep_status", taskStatus[depName])
 					skip = true
 					break
 				}
 			}
 			if skip {
 				taskStatus[task.Name] = "Skipped"
-				continue
-			}
-
-			// Check for failure dependencies (next_if_fail)
-			if len(task.NextIfFail) > 0 {
-				allFailDepsFailed := true
-				for _, depName := range task.NextIfFail {
-					if status, ok := taskStatus[depName]; !ok || status != "Failed" {
-						allFailDepsFailed = false
-						break
-					}
-				}
-				if !allFailDepsFailed {
-					pterm.Info.Printf("Skipping task '%s' because not all 'next_if_fail' dependencies failed.\n", task.Name)
-					skip = true
-				}
-			}
-
-			if skip {
-				taskStatus[task.Name] = "Skipped"
+				p.Increment()
 				continue
 			}
 
@@ -360,6 +343,7 @@ func (tr *TaskRunner) Run() error {
 			} else {
 				taskStatus[task.Name] = "Success"
 			}
+			p.Increment()
 		}
 
 		groupHadSuccess := len(groupErrors) == 0
@@ -387,17 +371,17 @@ func (tr *TaskRunner) Run() error {
 
 			success, _, _, err := luainterface.ExecuteLuaFunction(L, group.CleanWorkdirAfterRunFunc, nil, resultTable, 1, context.Background())
 			if err != nil {
-				pterm.Error.Printf("Error executing clean_workdir_after_run for group '%s': %v\n", groupName, err)
+				slog.Error("Error executing clean_workdir_after_run", "group", groupName, "err", err)
 			} else {
 				shouldClean = success
 			}
 		}
 
 		if shouldClean {
-			pterm.Info.Printf("Cleaning up workdir for group '%s': %s\n", groupName, workdir)
+			slog.Info("Cleaning up workdir", "group", groupName, "workdir", workdir)
 			os.RemoveAll(workdir)
 		} else {
-			pterm.Warning.Printf("Workdir for group '%s' preserved at: %s\n", groupName, workdir)
+			slog.Warn("Workdir preserved", "group", groupName, "workdir", workdir)
 		}
 	}
 
