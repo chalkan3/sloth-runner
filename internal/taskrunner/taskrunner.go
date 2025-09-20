@@ -238,6 +238,15 @@ t.Output = L.NewTable()
 	return nil
 }
 
+// Run executes the task groups and tasks defined in the TaskRunner.
+// It orchestrates the entire execution process, including:
+// - Filtering task groups if a target group is specified.
+// - Setting up and cleaning up work directories.
+// - Resolving the correct task execution order based on dependencies.
+// - Displaying a real-time progress bar using pterm.
+// - Executing each task sequentially, respecting dependency statuses.
+// - Collecting results and outputs.
+// - Rendering a final summary table.
 func (tr *TaskRunner) Run() error {
 	if len(tr.TaskGroups) == 0 {
 		slog.Warn("No task groups defined.")

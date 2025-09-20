@@ -1,65 +1,41 @@
 package types
 
 import (
-	"bufio"
-	"fmt"
-	lua "github.com/yuin/gopher-lua"
 	"io"
 	"os/exec"
-	"strings"
-	"sync"
 	"time"
+
+	lua "github.com/yuin/gopher-lua"
 )
 
-// SharedSession manages a persistent shell process.
-type SharedSession struct {
-	Cmd     *exec.Cmd
-	Stdin   io.WriteCloser
-	Stdout  io.ReadCloser
-	Stderr  io.ReadCloser
-	Mu      sync.Mutex
-	Workdir string
+// Task represents a single unit of work in the runner.
+type Task struct {
+	Name        string
+	Description string
+	CommandFunc *lua.LFunction
+	CommandStr  string
+	DependsOn   []string
+	NextIfFail  []string
+	Params      map[string]string
+	Retries     int
+	Timeout     string
+	Async       bool
+	PreExec     *lua.LFunction
+	PostExec    *lua.LFunction
+	RunIf       string
+	RunIfFunc   *lua.LFunction
+	AbortIf     string
+	AbortIfFunc *lua.LFunction
+	Output      *lua.LTable
 }
 
-// ExecuteCommand runs a command in the persistent shell.
-func (s *SharedSession) ExecuteCommand(command string, workdir string) (string, string, error) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	// Unique boundary to mark end of output
-	boundary := fmt.Sprintf("END_OF_COMMAND_%d", time.Now().UnixNano())
-
-	// We need a reader for stdout to read until the boundary
-	reader := bufio.NewReader(s.Stdout)
-
-	// Execute command, merge stderr to stdout, and echo boundary
-	fullCommand := fmt.Sprintf("cd %s && %s 2>&1; echo %s\n", workdir, command, boundary)
-	if _, err := s.Stdin.Write([]byte(fullCommand)); err != nil {
-		return "", "", err
-	}
-
-	// Read stdout until boundary
-	var stdout, stderr strings.Builder
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return "", "", err
-		}
-		if strings.Contains(line, boundary) {
-			break
-		}
-		stdout.WriteString(line)
-	}
-
-	return stdout.String(), stderr.String(), nil
-}
-
-// Close terminates the persistent shell session.
-func (s *SharedSession) Close() error {
-	if s.Cmd.Process != nil {
-		return s.Cmd.Process.Kill()
-	}
-	return nil
+// TaskGroup represents a collection of related tasks.
+type TaskGroup struct {
+	Description              string
+	Tasks                    []Task
+	Workdir                  string
+	CreateWorkdirBeforeRun   bool
+	CleanWorkdirAfterRunFunc *lua.LFunction
 }
 
 // TaskResult holds the outcome of a single task execution.
@@ -70,35 +46,22 @@ type TaskResult struct {
 	Error    error
 }
 
-type Task struct {
-	Name        string
-	Description string
-	CommandFunc *lua.LFunction // Stores the Lua function if command is dynamic
-	CommandStr  string         // Stores the command string if static
-	Params      map[string]string
-	PreExec     *lua.LFunction // Stores the Lua function for pre-execution hook
-	PostExec    *lua.LFunction // Stores the Lua function for post-execution hook
-	Async       bool           // Whether the task should run asynchronously
-	DependsOn   []string       // Names of the tasks this one depends on
-	Output      *lua.LTable    // Stores the output of the task after execution
-	Retries     int            // Number of times to retry a failed task
-	Timeout     string         // Timeout for the task (e.g., "30s", "1m")
-	RunIf       string         // A shell command that must succeed for the task to run
-	AbortIf     string         // A shell command that, if it succeeds, will abort the entire execution
-	RunIfFunc   *lua.LFunction // A Lua function that must return true for the task to run
-	AbortIfFunc *lua.LFunction // A Lua function that, if it returns true, will abort the entire execution
-	NextIfFail  []string       // Names of the tasks that must fail for this one to run
+// SharedSession holds data that can be shared between tasks in a group.
+type SharedSession struct {
+	Workdir string
+	Cmd     *exec.Cmd
+	Stdin   io.WriteCloser
+	Stdout  io.ReadCloser
+	Stderr  io.ReadCloser
 }
 
-type TaskGroup struct {
-	Description              string
-	Tasks                    []Task
-	Workdir                  string // Add this line
-	CreateWorkdirBeforeRun   bool
-	CleanWorkdirAfterRunFunc *lua.LFunction
-	ExecutionMode            string // "isolated" (default) or "shared_session"
-}
-
+// TaskRunner is the interface for the main task execution engine.
 type TaskRunner interface {
+	Run() error
 	RunTasksParallel(tasks []*Task, input *lua.LTable) ([]TaskResult, error)
+}
+
+// PythonVenv represents a Python virtual environment.
+type PythonVenv struct {
+	Path string
 }

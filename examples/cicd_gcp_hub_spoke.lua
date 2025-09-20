@@ -12,36 +12,34 @@ TaskDefinitions = {
   ["gcp_hub_spoke_deploy"] = {
     description = "CI/CD Pipeline: Clones, sets up the environment, and deploys the gcp-hub-spoke Pulumi project.",
     
-    -- Create a temporary, isolated directory for this run.
-    create_workdir_before_run = true,
-    
-    -- Clean up the directory only if the entire pipeline succeeds.
-    -- If it fails, the directory is kept for debugging.
-    clean_workdir_after_run = function(last_result)
-      if not last_result.success then
-        log.error("Pipeline failed. The workdir will be kept for debugging at: " .. last_result.output.workdir)
-      end
-      return last_result.success
-    end,
-
     tasks = {
       {
         name = "clone_repository",
-        description = "Clones the gcp-hub-spoke project repository.",
-        command = function(params)
-          local workdir = params.workdir
-          log.info("Cloning repository into: " .. workdir)
+        description = "Clones the gcp-hub-spoke project repository into a new temp dir.",
+        command = function()
+          -- Create a unique temporary directory for this execution.
+          local temp_dir, err = fs.tmpname()
+          if err then
+            return false, "Failed to get temporary directory name: " .. err
+          end
+          fs.mkdir(temp_dir)
+          log.info("Created temporary directory for clone: " .. temp_dir)
           
           local repo_url = "https://github.com/chalkan3/gcp-hub-spoke.git"
-          local result = require("git").repo(workdir):clone(repo_url)
+          local result = require("git").clone(repo_url, temp_dir)
           
           if not result.success then
-            log.error("Failed to clone repository: " .. result.stderr)
-            return false, "Git clone failed", { workdir = workdir }
+            local err_msg = "Failed to clone repository"
+            if result.stderr then
+              err_msg = err_msg .. ": " .. result.stderr
+            end
+            log.error(err_msg)
+            return false, "Git clone failed", { workdir = temp_dir }
           end
           
           log.info("Repository cloned successfully.")
-          return true, "Repository cloned.", { workdir = workdir }
+          -- Return the path to the directory as an output.
+          return true, "Repository cloned.", { workdir = temp_dir }
         end
       },
       {
@@ -49,8 +47,11 @@ TaskDefinitions = {
         description = "Installs dependencies and deploys the Pulumi stack.",
         depends_on = "clone_repository",
         command = function(params, inputs)
-          -- The workdir is the output from the previous task.
+          -- The workdir now comes explicitly from the output of the previous task.
           local workdir = inputs.clone_repository.workdir
+          if not workdir then
+            return false, "Workdir not received from clone_repository task."
+          end
           log.info("Running deployment from: " .. workdir)
 
           -- 1. Set up Python virtual environment
@@ -61,47 +62,37 @@ TaskDefinitions = {
           local venv_result = venv:create()
           if not venv_result.success then
             log.error("Failed to create venv: " .. venv_result.stderr)
-            return false, "Venv creation failed", { workdir = workdir }
+            return false, "Venv creation failed"
           end
 
           log.info("Installing Python dependencies from requirements.txt...")
           local pip_result = venv:pip("install -r " .. workdir .. "/requirements.txt")
           if not pip_result.success then
             log.error("Failed to install dependencies: " .. pip_result.stderr)
-            return false, "Pip install failed", { workdir = workdir }
+            return false, "Pip install failed"
           end
 
           -- 2. Set up and run Pulumi
           local pulumi = require("pulumi")
           
-          -- For this example, we'll use a local file backend to avoid needing a real login.
-          -- The login path is relative to the workdir.
-          pulumi.login("file://./pulumi_state")
+          pulumi.login("file://" .. workdir .. "/pulumi_state")
 
-          -- Define the stack. The workdir is crucial here.
-          local stack = pulumi.stack("dev", { workdir = workdir })
+          -- Define the stack, passing the venv object to ensure it runs in the virtual environment.
+          local stack = pulumi.stack("dev", { workdir = workdir, venv = venv })
           
-          log.info("Initializing Pulumi stack...")
-          stack:init()
-
           log.info("Running 'pulumi up'...")
-          -- We pass '-y' to auto-approve the update.
           local up_result = stack:up({ yes = true })
 
           if not up_result.success then
             log.error("'pulumi up' failed. See output below.")
             log.error("STDOUT: " .. up_result.stdout)
             log.error("STDERR: " .. up_result.stderr)
-            return false, "Pulumi up failed", { workdir = workdir }
+            return false, "Pulumi up failed"
           end
 
           log.info("Pulumi up completed successfully.")
           
-          -- Return the workdir path for the clean_workdir_after_run function
-          local final_output = stack:outputs()
-          final_output.workdir = workdir
-          
-          return true, "Deployment finished successfully.", final_output
+          return true, "Deployment finished successfully.", stack:outputs()
         end
       }
     }

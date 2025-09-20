@@ -23,7 +23,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// --- Início: Definição Centralizada de Templates ---
+// --- Start: Centralized Template Definitions ---
 
 // Template defines a structure for a scaffolding template.
 type Template struct {

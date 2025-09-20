@@ -302,16 +302,32 @@ func luaFsLs(L *lua.LState) int {
 	return 2
 }
 
+func luaFsTmpName(L *lua.LState) int {
+	// In Go, creating a temp file/dir is the idiomatic way to get a unique temp name.
+	// We create a directory and immediately remove it just to get the name.
+	dir, err := ioutil.TempDir("", "sloth-runner-*")
+	if err != nil {
+		L.Push(lua.LNil)
+		L.Push(lua.LString(err.Error()))
+		return 2
+	}
+	os.Remove(dir) // We only want the name, not the directory itself yet.
+	L.Push(lua.LString(dir))
+	L.Push(lua.LNil)
+	return 2
+}
+
 func FsLoader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"read":   luaFsRead,
-		"write":  luaFsWrite,
-		"append": luaFsAppend,
-		"exists": luaFsExists,
-		"mkdir":  luaFsMkdir,
-		"rm":     luaFsRm,
-		"rm_r":   luaFsRmR,
-		"ls":     luaFsLs,
+		"read":    luaFsRead,
+		"write":   luaFsWrite,
+		"append":  luaFsAppend,
+		"exists":  luaFsExists,
+		"mkdir":   luaFsMkdir,
+		"rm":      luaFsRm,
+		"rm_r":    luaFsRmR,
+		"ls":      luaFsLs,
+		"tmpname": luaFsTmpName,
 	})
 	L.Push(mod)
 	return 1

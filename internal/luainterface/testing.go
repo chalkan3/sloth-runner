@@ -1,3 +1,6 @@
+// Package luainterface provides the core bridge between Go and the Lua scripting environment.
+// It defines the APIs that are exposed to Lua scripts as global modules, such as 'exec',
+// 'fs', 'log', 'test', and 'assert'.
 package luainterface
 
 import (
@@ -10,7 +13,8 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// TestState holds the results of a test run.
+// TestState holds the collective results of a test file execution. It tracks the
+// number of assertions and failures and accumulates the results for the final report.
 type TestState struct {
 	Assertions int
 	Failed     int
@@ -20,9 +24,12 @@ type TestState struct {
 
 // --- assert module ---
 
+// newAssertModule creates the 'assert' Lua module. This module provides functions
+// for making assertions within test cases.
 func newAssertModule(ts *TestState) lua.LGFunction {
 	return func(L *lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			// assert.is_true(value, message)
 			"is_true": func(L *lua.LState) int {
 				ts.Assertions++
 				val := L.ToBool(1)
@@ -41,6 +48,7 @@ func newAssertModule(ts *TestState) lua.LGFunction {
 				}
 				return 0
 			},
+			// assert.equals(actual, expected, message)
 			"equals": func(L *lua.LState) int {
 				ts.Assertions++
 				actual := L.Get(1)
@@ -68,9 +76,12 @@ func newAssertModule(ts *TestState) lua.LGFunction {
 
 // --- test module ---
 
+// newTestModule creates the 'test' Lua module. This module provides functions
+// for structuring tests and running tasks.
 func newTestModule(ts *TestState, taskGroups map[string]types.TaskGroup) lua.LGFunction {
 	return func(L *lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			// test.describe(name, function)
 			"describe": func(L *lua.LState) int {
 				suiteName := L.CheckString(1)
 				fn := L.CheckFunction(2)
@@ -82,9 +93,8 @@ func newTestModule(ts *TestState, taskGroups map[string]types.TaskGroup) lua.LGF
 				}
 				return 0
 			},
+			// test.it(function)
 			"it": func(L *lua.LState) int {
-				// 'it' is just syntactic sugar for running the function.
-				// The real work is done by the assertions within it.
 				fn := L.CheckFunction(1)
 				L.Push(fn)
 				if err := L.PCall(0, 0, nil); err != nil {
@@ -92,6 +102,7 @@ func newTestModule(ts *TestState, taskGroups map[string]types.TaskGroup) lua.LGF
 				}
 				return 0
 			},
+			// test.run_task(taskName) -> result_table
 			"run_task": func(L *lua.LState) int {
 				taskName := L.CheckString(1)
 				
@@ -136,7 +147,7 @@ func newTestModule(ts *TestState, taskGroups map[string]types.TaskGroup) lua.LGF
 	}
 }
 
-// OpenTesting loads the 'test' and 'assert' modules into the Lua state.
+// OpenTesting loads the 'test' and 'assert' modules into the Lua state for a test run.
 func OpenTesting(L *lua.LState, ts *TestState, taskGroups map[string]types.TaskGroup) {
 	L.PreloadModule("assert", newAssertModule(ts))
 	if err := L.DoString(`assert = require("assert")`); err != nil {

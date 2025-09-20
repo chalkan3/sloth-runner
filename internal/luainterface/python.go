@@ -7,19 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chalkan3/sloth-runner/internal/types"
 	"github.com/yuin/gopher-lua"
 )
 
 const pythonVenvTypeName = "python_venv"
 
-// PythonVenv é o struct Go que representa um ambiente virtual Python.
-// Ele armazena o caminho para o diretório do venv.
-type PythonVenv struct {
-	VenvPath string
-}
-
-// runCommand é uma função auxiliar para executar comandos do sistema de forma segura,
-// capturando stdout e stderr. Retorna o sucesso da operação e as saídas.
+// runCommand is a helper function to execute system commands safely,
+// capturing stdout and stderr. It returns the success of the operation and the outputs.
 func runCommand(command string, args ...string) (bool, string, string) {
 	cmd := exec.Command(command, args...)
 	var stdout, stderr bytes.Buffer
@@ -32,11 +27,11 @@ func runCommand(command string, args ...string) (bool, string, string) {
 	return success, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String())
 }
 
-// newPythonVenv é a função construtora exposta ao Lua como `python:venv(path)`.
-// Ela cria um userdata do tipo PythonVenv.
+// newPythonVenv is the constructor function exposed to Lua as `python:venv(path)`.
+// It creates a userdata of type types.PythonVenv.
 func newPythonVenv(L *lua.LState) int {
 	path := L.CheckString(1)
-	venv := &PythonVenv{VenvPath: path}
+	venv := &types.PythonVenv{Path: path}
 
 	ud := L.NewUserData()
 	ud.Value = venv
@@ -45,21 +40,21 @@ func newPythonVenv(L *lua.LState) int {
 	return 1
 }
 
-// venvExists verifica se o ambiente virtual parece existir.
-// A verificação é feita pela presença do arquivo 'bin/activate'.
+// venvExists checks if the virtual environment seems to exist.
+// The check is done by the presence of the 'bin/activate' file.
 func venvExists(L *lua.LState) int {
-	venv := L.CheckUserData(1).Value.(*PythonVenv)
-	activatePath := filepath.Join(venv.VenvPath, "bin", "activate")
+	venv := L.CheckUserData(1).Value.(*types.PythonVenv)
+	activatePath := filepath.Join(venv.Path, "bin", "activate")
 
 	_, err := os.Stat(activatePath)
 	L.Push(lua.LBool(err == nil))
 	return 1
 }
 
-// venvCreate executa `python3 -m venv <path>` para criar o ambiente virtual.
+// venvCreate executes `python3 -m venv <path>` to create the virtual environment.
 func venvCreate(L *lua.LState) int {
-	venv := L.CheckUserData(1).Value.(*PythonVenv)
-	success, stdout, stderr := runCommand("python3", "-m", "venv", venv.VenvPath)
+	venv := L.CheckUserData(1).Value.(*types.PythonVenv)
+	success, stdout, stderr := runCommand("python3", "-m", "venv", venv.Path)
 
 	result := L.NewTable()
 	result.RawSetString("success", lua.LBool(success))
@@ -69,14 +64,14 @@ func venvCreate(L *lua.LState) int {
 	return 1
 }
 
-// venvPip executa um comando `pip` dentro do contexto do venv.
+// venvPip executes a `pip` command within the context of the venv.
 // Ex: venv:pip("install -r requirements.txt")
 func venvPip(L *lua.LState) int {
-	venv := L.CheckUserData(1).Value.(*PythonVenv)
+	venv := L.CheckUserData(1).Value.(*types.PythonVenv)
 	argsStr := L.CheckString(2)
-	args := strings.Fields(argsStr) // Divide a string de argumentos em um slice
+	args := strings.Fields(argsStr) // Split the argument string into a slice
 
-	pipPath := filepath.Join(venv.VenvPath, "bin", "pip")
+	pipPath := filepath.Join(venv.Path, "bin", "pip")
 	success, stdout, stderr := runCommand(pipPath, args...)
 
 	result := L.NewTable()
@@ -87,14 +82,14 @@ func venvPip(L *lua.LState) int {
 	return 1
 }
 
-// venvExec executa um comando `python` dentro do contexto do venv.
+// venvExec executes a `python` command within the context of the venv.
 // Ex: venv:exec("app.py --port 8080")
 func venvExec(L *lua.LState) int {
-	venv := L.CheckUserData(1).Value.(*PythonVenv)
+	venv := L.CheckUserData(1).Value.(*types.PythonVenv)
 	argsStr := L.CheckString(2)
 	args := strings.Fields(argsStr)
 
-	pythonPath := filepath.Join(venv.VenvPath, "bin", "python")
+	pythonPath := filepath.Join(venv.Path, "bin", "python")
 	success, stdout, stderr := runCommand(pythonPath, args...)
 
 	result := L.NewTable()
@@ -105,7 +100,7 @@ func venvExec(L *lua.LState) int {
 	return 1
 }
 
-// Métodos que serão registrados para o tipo PythonVenv em Lua.
+// Methods that will be registered for the types.PythonVenv type in Lua.
 var pythonVenvMethods = map[string]lua.LGFunction{
 	"exists": venvExists,
 	"create": venvCreate,
@@ -113,24 +108,24 @@ var pythonVenvMethods = map[string]lua.LGFunction{
 	"exec":   venvExec,
 }
 
-// registerPythonVenvType cria e registra a metatable para o nosso tipo customizado.
+// registerPythonVenvType creates and registers the metatable for our custom type.
 func registerPythonVenvType(L *lua.LState) {
 	mt := L.NewTypeMetatable(pythonVenvTypeName)
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), pythonVenvMethods))
 }
 
-// PythonLoader is the function that the gopher-lua usará para carregar o módulo `python`.
+// PythonLoader is the function that gopher-lua will use to load the `python` module.
 func PythonLoader(L *lua.LState) int {
-	// Cria a tabela principal do módulo
+	// Create the main module table
 	mod := L.NewTable()
 
-	// Registra o tipo PythonVenv e seus métodos
+	// Register the types.PythonVenv type and its methods
 	registerPythonVenvType(L)
 
-	// Define a função `python:venv(path)`
+	// Define the `python:venv(path)` function
 	L.SetField(mod, "venv", L.NewFunction(newPythonVenv))
 
-	// Retorna a tabela do módulo
+	// Return the module table
 	L.Push(mod)
 	return 1
 }

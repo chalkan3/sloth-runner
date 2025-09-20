@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chalkan3/sloth-runner/internal/types"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -20,20 +21,21 @@ luaPulumiStackTypeName = "sloth.pulumiStack"
 type pulumiStack struct {
 	Name     string
 	WorkDir  string
-	VenvPath string
+	Venv     *types.PythonVenv
 	LoginURL string
 }
 
-// setupPulumiCmd creates and configures an exec.Cmd for a Pulumi command.
+// setupPulumiCmd creates and new-configured an exec.Cmd for a Pulumi command.
 func setupPulumiCmd(stack *pulumiStack, commandParts ...string) *exec.Cmd {
-	pulumiCmd := "pulumi " + strings.Join(commandParts, " ")
+
+pulumiCmd := "pulumi " + strings.Join(commandParts, " ")
 
 	// Chain commands
 	var commands []string
 
 	// Activate venv if present
-	if stack.VenvPath != "" {
-		activateScript := filepath.Join(stack.VenvPath, "bin", "activate")
+	if stack.Venv != nil && stack.Venv.Path != "" {
+		activateScript := filepath.Join(stack.Venv.Path, "bin", "activate")
 		commands = append(commands, fmt.Sprintf("source %s", activateScript))
 	}
 
@@ -76,23 +78,30 @@ func setupPulumiCmd(stack *pulumiStack, commandParts ...string) *exec.Cmd {
 	return cmd
 }
 
-// pulumi:stack(name, {workdir="path", venv_path="path", login_url="url"}) -> stack
+// pulumi:stack(name, {workdir="path", venv=venv_obj, login_url="url"}) -> stack
 func pulumiStackFn(L *lua.LState) int {
 	name := L.CheckString(1)
 	opts := L.CheckTable(2)
 	workdir := opts.RawGetString("workdir").String()
-	venvPath := opts.RawGetString("venv_path").String()
 	loginURL := opts.RawGetString("login_url").String()
+	venvUD := opts.RawGetString("venv")
 
 	if workdir == "" {
-		L.RaiseError("o campo 'workdir' é obrigatório para pulumi:stack")
+		L.RaiseError("the 'workdir' field is required for pulumi:stack")
 		return 0
+	}
+
+	var venv *types.PythonVenv
+	if venvUD.Type() == lua.LTUserData {
+		if v, ok := venvUD.(*lua.LUserData).Value.(*types.PythonVenv); ok {
+			venv = v
+		}
 	}
 
 	stack := &pulumiStack{
 		Name:     name,
 		WorkDir:  workdir,
-		VenvPath: venvPath,
+		Venv:     venv,
 		LoginURL: loginURL,
 	}
 
@@ -108,7 +117,7 @@ func checkPulumiStack(L *lua.LState, n int) *pulumiStack {
 	if v, ok := ud.Value.(*pulumiStack); ok {
 		return v
 	}
-	L.ArgError(n, "esperado objeto stack do pulumi")
+	L.ArgError(n, "expected pulumi stack object")
 	return nil
 }
 

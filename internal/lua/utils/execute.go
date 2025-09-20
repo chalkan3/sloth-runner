@@ -1,3 +1,6 @@
+// Package utils provides shared helper functions for interacting with the gopher-lua
+// state. These utilities are kept in a separate, low-level package to avoid
+// import cycles between higher-level packages like 'luainterface' and 'runner'.
 package utils
 
 import (
@@ -7,7 +10,24 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// ExecuteLuaFunction is a helper to safely call a Lua function with arguments.
+// ExecuteLuaFunction is a helper to safely call a Lua function with a standardized
+// set of arguments and return values. It handles the boilerplate of pushing the
+// function and arguments to the stack and parsing the multiple return values.
+//
+// Parameters:
+//   L: The Lua state.
+//   fn: The Lua function to call.
+//   params: A map of string key-value pairs, passed as the first table argument to the function.
+//   secondArg: An arbitrary Lua value passed as the second argument.
+//   nRet: The expected number of return values.
+//   ctx: A Go context to associate with the Lua state for the duration of the call.
+//   args: Additional variadic Lua values to pass to the function.
+//
+// Returns:
+//   - bool: The first return value, expected to be a boolean indicating success.
+//   - string: The second return value, expected to be a string message.
+//   - *lua.LTable: The third return value, expected to be a table containing output data.
+//   - error: Any error that occurred during the pcall execution.
 func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]string, secondArg lua.LValue, nRet int, ctx context.Context, args ...lua.LValue) (bool, string, *lua.LTable, error) {
 	if ctx != nil {
 		L.SetContext(ctx)
@@ -58,7 +78,9 @@ func ExecuteLuaFunction(L *lua.LState, fn *lua.LFunction, params map[string]stri
 	return success, message, outputTable, nil
 }
 
-// CopyTable performs a deep copy of a table from one Lua state to another.
+// CopyTable performs a deep copy of a Lua table from one Lua state to another.
+// This is essential when passing data between isolated Lua environments, such as
+// in the testing framework.
 func CopyTable(src *lua.LTable, destL *lua.LState) *lua.LTable {
 	destT := destL.NewTable()
 	src.ForEach(func(key, value lua.LValue) {
@@ -69,7 +91,8 @@ func CopyTable(src *lua.LTable, destL *lua.LState) *lua.LTable {
 	return destT
 }
 
-// CopyValue copies a Lua value from one state to another.
+// CopyValue recursively copies a Lua value from one state to another. It handles
+// basic types and tables. Functions and userdata are not copied and will result in nil.
 func CopyValue(value lua.LValue, destL *lua.LState) lua.LValue {
 	switch value.Type() {
 	case lua.LTBool:
