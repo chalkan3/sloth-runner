@@ -25,31 +25,31 @@ type pulumiStack struct {
 
 // setupPulumiCmd creates and configures an exec.Cmd for a Pulumi command.
 func setupPulumiCmd(stack *pulumiStack, commandParts ...string) *exec.Cmd {
-	fullCommand := "pulumi " + strings.Join(commandParts, " ")
-	if stack.LoginURL != "" {
-		loginCmd := fmt.Sprintf("pulumi login %s", stack.LoginURL)
-		fullCommand = fmt.Sprintf("%s && %s", loginCmd, fullCommand)
+	pulumiCmd := "pulumi " + strings.Join(commandParts, " ")
+
+	// Chain commands
+	var commands []string
+
+	// Activate venv if present
+	if stack.VenvPath != "" {
+		activateScript := filepath.Join(stack.VenvPath, "bin", "activate")
+		commands = append(commands, fmt.Sprintf("source %s", activateScript))
 	}
+
+	// Login if URL is present
+	if stack.LoginURL != "" {
+		commands = append(commands, fmt.Sprintf("pulumi login %s", stack.LoginURL))
+	}
+
+	// Add the actual pulumi command
+	commands = append(commands, pulumiCmd)
+
+	fullCommand := strings.Join(commands, " && ")
 
 	cmd := exec.Command("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 	cmd.Env = os.Environ()
 
-	if stack.VenvPath != "" {
-		cmd.Env = append(cmd.Env, "VIRTUAL_ENV="+stack.VenvPath)
-		newPath := filepath.Join(stack.VenvPath, "bin") + ":" + os.Getenv("PATH")
-		pathUpdated := false
-		for i, v := range cmd.Env {
-			if strings.HasPrefix(v, "PATH=") {
-				cmd.Env[i] = "PATH=" + newPath
-				pathUpdated = true
-				break
-			}
-		}
-		if !pathUpdated {
-			cmd.Env = append(cmd.Env, "PATH="+newPath)
-		}
-	}
 	return cmd
 }
 
