@@ -589,6 +589,61 @@ var validateCmd = &cobra.Command{
 	},
 }
 
+var testCmd = &cobra.Command{
+	Use:   "test -w <workflow-file> -f <test-file>",
+	Short: "Executes a Lua test file for a task workflow",
+	Long: `The test command runs a specified Lua test file against a workflow.
+Inside the test file, you can use the 'test' and 'assert' modules to validate task behaviors.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		testFilePath, _ := cmd.Flags().GetString("file")
+		workflowFilePath, _ := cmd.Flags().GetString("workflow")
+
+		L := lua.NewState()
+		defer L.Close()
+
+		// Load the main workflow to get TaskDefinitions
+		luainterface.OpenAll(L)
+		taskGroups, err := loadAndRenderLuaConfig(L, workflowFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
+		if err != nil {
+			return fmt.Errorf("could not load workflow file %s: %w", workflowFilePath, err)
+		}
+
+		// Setup the testing environment
+		testState := &luainterface.TestState{}
+		luainterface.OpenTesting(L, testState, taskGroups)
+
+		// Execute the test file
+		testFileContent, err := ioutil.ReadFile(testFilePath)
+		if err != nil {
+			return fmt.Errorf("could not read test file %s: %w", testFilePath, err)
+		}
+		if err := L.DoString(string(testFileContent)); err != nil {
+			return fmt.Errorf("error executing test file %s: %w", testFilePath, err)
+		}
+
+		// Print results
+		pterm.DefaultSection.Printf("Test Results for %s", testFilePath)
+		for _, item := range testState.Results {
+			// Simple printing instead of pterm leveled list
+			fmt.Println(item.Text)
+		}
+
+		pterm.DefaultSection.Println("Summary")
+		summaryData := pterm.TableData{
+			{"Category", "Count"},
+			{"Total Assertions", fmt.Sprintf("%d", testState.Assertions)},
+			{"Passed", pterm.Green(fmt.Sprintf("%d", testState.Assertions-testState.Failed))},
+			{"Failed", pterm.Red(fmt.Sprintf("%d", testState.Failed))},
+		}
+		pterm.DefaultTable.WithData(summaryData).Render()
+
+		if testState.Failed > 0 {
+			return fmt.Errorf("%d tests failed", testState.Failed)
+		}
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
@@ -597,6 +652,8 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(testCmd)
+
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
 	newCmd.Flags().StringVarP(&templateName, "template", "t", "simple", "Template to use. See 'template list' for options.")
 	runCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
@@ -619,6 +676,10 @@ func init() {
 	validateCmd.Flags().BoolVarP(&isProduction, "prod", "p", false, "Set to true for production environment")
 	validateCmd.Flags().StringVar(&shardsStr, "shards", "1,2,3", "Comma-separated list of shard numbers (e.g., 1,2,3)")
 	validateCmd.Flags().StringVarP(&valuesFilePath, "values", "v", "", "Path to a YAML file with values to be passed to Lua tasks")
+	testCmd.Flags().StringP("file", "f", "", "Path to the Lua test file (required)")
+	testCmd.Flags().StringP("workflow", "w", "", "Path to the Lua workflow file to be tested (required)")
+	testCmd.MarkFlagRequired("file")
+	testCmd.MarkFlagRequired("workflow")
 }
 
 func main() {

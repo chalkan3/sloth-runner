@@ -13,13 +13,18 @@ A flexible and extensible task runner application written in Go, powered by Lua 
 *   **📜 Lua Scripting:** Define tasks and workflows using powerful and flexible Lua scripts.
 *   **🔗 Dependency Management:** Specify task dependencies to ensure ordered execution of complex pipelines.
 *   **⚡ Asynchronous Task Execution:** Run tasks concurrently for improved performance.
+*   **✅ Testing Framework:** A built-in test runner to write unit tests for your workflows using a simple `test` and `assert` API in Lua. See [Testing Workflows](docs/testing.md).
 *   **🪝 Pre/Post Execution Hooks:** Define custom Lua functions to run before and after task commands.
 *   **⚙️ Rich Lua API:** Access system functionalities directly from Lua tasks:
     *   **`exec` module:** Execute shell commands.
     *   **`fs` module:** Perform file system operations (read, write, append, exists, mkdir, rm, rm_r, ls).
     *   **`net` module:** Make HTTP requests (GET, POST) and download files.
     *   **`data` module:** Parse and serialize JSON and YAML data.
-    *   **`log` module:** Log messages with different severity levels (info, warn, error, debug).
+    *   **`log` module:** Log messages with different severity levels.
+        *   `log.info("Starting process...")`
+        *   `log.warn("Configuration value is deprecated.")`
+        *   `log.error("Failed to fetch data!")`
+        *   `log.debug("Current value of x is: " .. tostring(x))`
     *   **`salt` module:** Execute SaltStack commands (`salt`, `salt-call`) directly.
 *   **📝 `values.yaml` Integration:** Pass configuration values to your Lua tasks via a `values.yaml` file, similar to Helm.
 *   **💻 Command-Line Interface (CLI):**
