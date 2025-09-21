@@ -220,7 +220,6 @@ func pulumiStackConfig(L *lua.LState) int {
 
 var pulumiMethods = map[string]lua.LGFunction{
 	"stack":          pulumiStackFn,
-	"login":          pulumiLoginFn,
 	"install_plugin": pulumiInstallPluginFn,
 }
 
@@ -228,25 +227,6 @@ func pulumiInstallPluginFn(L *lua.LState) int {
 	pluginName := L.CheckString(1)
 	fullCommand := fmt.Sprintf("pulumi plugin install language %s --reinstall", pluginName)
 	cmd := exec.Command("bash", "-c", fullCommand)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	success := err == nil
-
-	result := L.NewTable()
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
-	result.RawSetString("success", lua.LBool(success))
-	L.Push(result)
-	return 1
-}
-
-func pulumiLoginFn(L *lua.LState) int {
-	url := L.OptString(1, "")
-	cmd := exec.Command("pulumi", "login", url)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

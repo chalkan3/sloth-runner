@@ -61,6 +61,11 @@ type TaskRunner interface {
 	RunTasksParallel(tasks []*Task, input *lua.LTable) ([]TaskResult, error)
 }
 
+// Exporter defines an interface for exporting data from a Lua script.
+type Exporter interface {
+	Export(data map[string]interface{})
+}
+
 // PythonVenv represents a Python virtual environment.
 type PythonVenv struct {
 	Path string

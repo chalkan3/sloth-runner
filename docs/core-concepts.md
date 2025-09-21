@@ -64,6 +64,45 @@ TaskDefinitions = {
 *   **Parâmetros (`params`):** Podem ser passados para as tarefas via linha de comando ou definidos na própria tarefa. A função `command` e as funções `run_if`/`abort_if` podem acessá-los.
 *   **Outputs (`deps`):** As funções Lua de `command` podem retornar uma tabela de outputs. Tarefas que dependem desta tarefa podem acessar esses outputs através do argumento `deps`.
 
+## Exportando Dados para a CLI
+
+Além dos outputs de tarefas, o `sloth-runner` fornece uma função global `export()` que permite passar dados de dentro de um script diretamente para a saída da linha de comando.
+
+### `export(tabela)`
+
+*   **`tabela`**: Uma tabela Lua cujos pares de chave-valor serão exportados.
+
+Quando você executa uma tarefa com a flag `--return`, os dados passados para a função `export()` serão mesclados com o output da tarefa final e impressos como um único objeto JSON. Se houver chaves duplicadas, o valor da função `export()` terá precedência.
+
+Isso é útil para extrair informações importantes de qualquer ponto do seu script, não apenas do valor de retorno da última tarefa.
+
+**Exemplo:**
+
+```lua
+command = function(params, deps)
+  -- Lógica da tarefa...
+  local some_data = {
+    info = "Este é um dado importante",
+    timestamp = os.time()
+  }
+  
+  -- Exporta a tabela
+  export(some_data)
+  
+  -- A tarefa pode continuar e retornar seu próprio output
+  return true, "Tarefa concluída", { status = "ok" }
+end
+```
+
+Executando com `--return` resultaria em uma saída JSON como:
+```json
+{
+  "info": "Este é um dado importante",
+  "timestamp": 1678886400,
+  "status": "ok"
+}
+```
+
 ## Módulos Built-in
 
 O Sloth-Runner expõe várias funcionalidades Go como módulos Lua, permitindo que suas tarefas interajam com o sistema e serviços externos. Além dos módulos básicos (`exec`, `fs`, `net`, `data`, `log`, `import`, `parallel`), o Sloth-Runner agora inclui módulos avançados para Git, Pulumi e Salt.

@@ -21,6 +21,7 @@
     *   **`data` 模块:** 解析和序列化 JSON 和 YAML 数据。
     *   **`log` 模块:** 以不同的严重级别（info、warn、error、debug）记录消息。
     *   **`salt` 模块:** 直接执行 SaltStack 命令（`salt`、`salt-call`）。
+    *   **`gcp` 模块:** 执行谷歌云 (`gcloud`) 命令行指令。
 *   **📝 `values.yaml` 集成:** 通过 `values.yaml` 文件将配置值传递给您的 Lua 任务，类似于 Helm。
 *   **💻 命令行界面 (CLI):**
     *   `run`: 从 Lua 配置文件执行任务。
