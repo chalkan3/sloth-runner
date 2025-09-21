@@ -12,6 +12,7 @@
     *   [Git 模块](./modules/git.md)
     *   [Pulumi 模块](./modules/pulumi.md)
     *   [Salt 模块](./modules/salt.md)
+    *   [GCP 模块](./modules/gcp.md)
 *   [高级示例](./advanced-examples.md)
 
 ---

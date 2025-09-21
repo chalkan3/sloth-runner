@@ -51,6 +51,7 @@ func setupTest(t *testing.T) (*lua.LState, func()) {
 	L.PreloadModule("git", GitLoader)
 	L.PreloadModule("pulumi", PulumiLoader)
 	L.PreloadModule("salt", SaltLoader)
+	OpenGCP(L)
 	// Open modules required by the examples
 	OpenLog(L)
 	OpenData(L)
@@ -68,6 +69,30 @@ func setupTest(t *testing.T) (*lua.LState, func()) {
 }
 
 // --- BASIC TESTS ---
+
+func TestGCPExec_Basic(t *testing.T) {
+	L, cleanup := setupTest(t)
+	defer cleanup()
+
+	mockExitCode = "0"
+	mockStdout = "Google Cloud SDK 123.456"
+	mockStderr = ""
+
+	script := `
+		local gcp = require('gcp')
+		result = gcp.exec({"--version"})
+	`
+	err := L.DoString(script)
+	assert.NoError(t, err)
+
+	result := L.GetGlobal("result").(*lua.LTable)
+	assert.Equal(t, "Google Cloud SDK 123.456", result.RawGetString("stdout").String())
+	assert.Equal(t, "", result.RawGetString("stderr").String())
+	assert.Equal(t, float64(0), float64(result.RawGetString("exit_code").(lua.LNumber)))
+
+	assert.Equal(t, 1, len(commandsCalled))
+	assert.Equal(t, []string{"gcloud", "--version"}, commandsCalled[0])
+}
 
 func TestGitClone_Basic(t *testing.T) {
 	L, cleanup := setupTest(t)
