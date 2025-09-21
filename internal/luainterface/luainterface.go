@@ -590,7 +590,7 @@ func OpenLog(L *lua.LState) {
 
 // OpenAll preloads all available sloth-runner modules into the Lua state.
 func OpenAll(L *lua.LState) {
-	RegisterSharedSessionType(L)
+	// RegisterSharedSessionType(L)
 	OpenExec(L)
 	OpenFs(L)
 	OpenNet(L)
@@ -599,6 +599,7 @@ func OpenAll(L *lua.LState) {
 	OpenSalt(L)
 	OpenPulumi(L)
 	OpenGit(L)
+	OpenGCP(L)
 	OpenPython(L)
 }
 

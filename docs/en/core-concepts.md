@@ -64,6 +64,45 @@ TaskDefinitions = {
 *   **Parameters (`params`):** Can be passed to tasks via the command line or defined within the task itself. The `command` function and `run_if`/`abort_if` functions can access them.
 *   **Outputs (`deps`):** Lua `command` functions can return an outputs table. Tasks that depend on this task can access these outputs through the `deps` argument.
 
+## Exporting Data to the CLI
+
+In addition to task outputs, `sloth-runner` provides a global `export()` function that allows you to pass data from within a script directly to the command-line output.
+
+### `export(table)`
+
+*   **`table`**: A Lua table whose key-value pairs will be exported.
+
+When you run a task with the `--return` flag, the data passed to the `export()` function will be merged with the final task's output and printed as a single JSON object. If there are duplicate keys, the value from the `export()` function will take precedence.
+
+This is useful for extracting important information from any point in your script, not just from the return value of the last task.
+
+**Example:**
+
+```lua
+command = function(params, deps)
+  -- Task logic...
+  local some_data = {
+    info = "This is important data",
+    timestamp = os.time()
+  }
+  
+  -- Export the table
+  export(some_data)
+  
+  -- The task can continue and return its own output
+  return true, "Task completed", { status = "ok" }
+end
+```
+
+Running with `--return` would result in a JSON output like:
+```json
+{
+  "info": "This is important data",
+  "timestamp": 1678886400,
+  "status": "ok"
+}
+```
+
 ## Built-in Modules
 
 Sloth-Runner exposes various Go functionalities as Lua modules, allowing your tasks to interact with the system and external services. In addition to the basic modules (`exec`, `fs`, `net`, `data`, `log`, `import`, `parallel`), Sloth-Runner now includes advanced modules for Git, Pulumi, and Salt.

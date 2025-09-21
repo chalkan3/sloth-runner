@@ -53,6 +53,7 @@ type TaskRunner struct {
 	TargetTasks []string
 	Results     []types.TaskResult
 	Outputs     map[string]interface{}
+	Exports     map[string]interface{}
 	DryRun      bool
 }
 
@@ -63,7 +64,14 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 		TargetGroup: targetGroup,
 		TargetTasks: targetTasks,
 		Outputs:     make(map[string]interface{}),
+		Exports:     make(map[string]interface{}),
 		DryRun:      dryRun,
+	}
+}
+
+func (tr *TaskRunner) Export(data map[string]interface{}) {
+	for key, value := range data {
+		tr.Exports[key] = value
 	}
 }
 

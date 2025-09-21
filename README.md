@@ -21,6 +21,7 @@ A flexible and extensible task runner application written in Go, powered by Lua 
     *   **`data` module:** Parse and serialize data in JSON and YAML format.
     *   **`log` module:** Log messages with different severity levels (info, warn, error, debug).
     *   **`salt` module:** Execute SaltStack commands (`salt`, `salt-call`) directly.
+    *   **`gcp` module:** Execute Google Cloud (`gcloud`) CLI commands.
 *   **📝 `values.yaml` Integration:** Pass configuration values to your Lua tasks through a `values.yaml` file, similar to Helm.
 *   **💻 Command-Line Interface (CLI):**
     *   `run`: Execute tasks from a Lua configuration file.

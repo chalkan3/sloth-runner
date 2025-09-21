@@ -12,6 +12,7 @@ Here you will find detailed guides, API references, and practical examples to he
     *   [Git Module](./modules/git.md)
     *   [Pulumi Module](./modules/pulumi.md)
     *   [Salt Module](./modules/salt.md)
+    *   [GCP Module](./modules/gcp.md)
 *   [Advanced Examples](./advanced-examples.md)
 
 ---

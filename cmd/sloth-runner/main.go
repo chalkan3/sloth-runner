@@ -351,6 +351,7 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 	if err := tmpl.Execute(&renderedLua, data); err != nil {
 		return nil, fmt.Errorf("error executing Lua template: %w", err)
 	}
+	luainterface.OpenAll(L) // Moved here
 	luainterface.OpenImport(L, configFilePath)
 	luainterface.OpenParallel(L, tr)
 	if valuesFilePath != "" {
@@ -456,10 +457,6 @@ You can specify the file, environment variables, and target specific tasks or gr
 		L := lua.NewState()
 		defer L.Close()
 
-		// Inicialização centralizada e definitiva do ambiente Lua.
-		// Isso garante que todos os módulos estejam sempre disponíveis.
-		luainterface.OpenAll(L)
-
 		var dummyTr types.TaskRunner = nil
 		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
 		if err != nil {
@@ -508,6 +505,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 		}
 		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
 		luainterface.OpenParallel(L, tr)
+		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {
 			return fmt.Errorf("error running tasks: %w", err)
 		}
@@ -518,12 +516,19 @@ You can specify the file, environment variables, and target specific tasks or gr
 					finalOutputs[taskName] = output
 				}
 			}
+
+			// Merge exported values, overwriting any task outputs with the same key
+			for key, value := range tr.Exports {
+				finalOutputs[key] = value
+			}
+
 			var outputToMarshal interface{}
-			if len(targetTasks) == 1 {
+			if len(targetTasks) == 1 && len(finalOutputs) == 1 {
 				if val, ok := finalOutputs[targetTasks[0]]; ok {
 					outputToMarshal = val
 				} else {
-					outputToMarshal = make(map[string]interface{})
+					// If the only task has no output but there are exports, marshal the whole map
+					outputToMarshal = finalOutputs
 				}
 			} else {
 				outputToMarshal = finalOutputs

@@ -64,6 +64,45 @@ TaskDefinitions = {
 *   **参数 (`params`)：** 可以通过命令行传递给任务，或在任务本身中定义。`command` 函数和 `run_if`/`abort_if` 函数可以访问它们。
 *   **输出 (`deps`)：** Lua `command` 函数可以返回一个输出表。依赖于此任务的任务可以通过 `deps` 参数访问这些输出。
 
+## 将数据导出到 CLI
+
+除了任务输出，`sloth-runner` 还提供了一个全局 `export()` 函数，允许您将数据从脚本内部直接传递到命令行输出。
+
+### `export(table)`
+
+*   **`table`**: 一个 Lua 表，其键值对将被导出。
+
+当您使用 `--return` 标志运行任务时，传递给 `export()` 函数的数据将与最终任务的输出合并，并作为单个 JSON 对象打印出来。如果存在重复的键，`export()` 函数的值将优先。
+
+这对于从脚本的任何位置提取重要信息非常有用，而不仅仅是从最后一个任务的返回值中提取。
+
+**示例:**
+
+```lua
+command = function(params, deps)
+  -- 任务逻辑...
+  local some_data = {
+    info = "这是重要数据",
+    timestamp = os.time()
+  }
+  
+  -- 导出表
+  export(some_data)
+  
+  -- 任务可以继续并返回自己的输出
+  return true, "任务完成", { status = "ok" }
+end
+```
+
+使用 `--return` 运行将产生如下 JSON 输出：
+```json
+{
+  "info": "这是重要数据",
+  "timestamp": 1678886400,
+  "status": "ok"
+}
+```
+
 ## 内置模块
 
 Sloth-Runner 将各种 Go 功能公开为 Lua 模块，允许您的任务与系统和外部服务进行交互。除了基本模块（`exec`、`fs`、`net`、`data`、`log`、`import`、`parallel`）之外，Sloth-Runner 现在还包括用于 Git、Pulumi 和 Salt 的高级模块。

@@ -5,33 +5,25 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-const SharedSessionTypeName = "session"
+// newExportFunction creates a new Lua function that allows scripts to export data.
+// It uses the Exporter interface to avoid a direct dependency on the taskrunner package.
+func newExportFunction(exporter types.Exporter) lua.LGFunction {
+	return func(L *lua.LState) int {
+		// Check if the first argument is a table
+		tbl := L.CheckTable(1)
 
-func RegisterSharedSessionType(L *lua.LState) {
-	mt := L.NewTypeMetatable(SharedSessionTypeName)
-	L.SetGlobal(SharedSessionTypeName, mt)
-	L.SetField(mt, "__index", L.NewFunction(sharedSession__index))
+		// Convert the Lua table to a Go map
+		exportedData := LuaTableToGoMap(L, tbl)
+
+		// Use the interface to export the data
+		exporter.Export(exportedData)
+
+		return 0 // No return value
+	}
 }
 
-func checkSharedSession(L *lua.LState) *types.SharedSession {
-	ud := L.CheckUserData(1)
-	if v, ok := ud.Value.(*types.SharedSession); ok {
-		return v
-	}
-	L.ArgError(1, "session expected")
-	return nil
-}
-
-func sharedSession__index(L *lua.LState) int {
-	s := checkSharedSession(L)
-	key := L.CheckString(2)
-
-	switch key {
-	case "workdir":
-		L.Push(lua.LString(s.Workdir))
-	default:
-		L.Push(lua.LNil)
-	}
-
-	return 1
+// OpenSession registers session-specific functions like 'export' into the Lua state.
+// It requires an Exporter to provide the export functionality.
+func OpenSession(L *lua.LState, exporter types.Exporter) {
+	L.SetGlobal("export", L.NewFunction(newExportFunction(exporter)))
 }
