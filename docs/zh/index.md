@@ -8,9 +8,17 @@
 
 *   [快速入门](./getting-started.md)
 *   [核心概念](./core-concepts.md)
+*   [CLI 命令](./CLI.md)
 *   **内置模块：**
+    *   [Data 模块](./modules/data.md)
+    *   [Exec 模块](./modules/exec.md)
+    *   [FS 模块](./modules/fs.md)
     *   [Git 模块](./modules/git.md)
+    *   [GCP 模块](./modules/gcp.md)
+    *   [Log 模块](./modules/log.md)
+    *   [Net 模块](./modules/net.md)
     *   [Pulumi 模块](./modules/pulumi.md)
+    *   [Python 模块](./modules/python.md)
     *   [Salt 模块](./modules/salt.md)
 *   [高级示例](./advanced-examples.md)
 

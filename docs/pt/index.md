@@ -8,9 +8,17 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 
 *   [Início Rápido](./getting-started.md)
 *   [Conceitos Essenciais](./core-concepts.md)
+*   [Comandos da CLI](./CLI.md)
 *   **Módulos Built-in:**
+    *   [Módulo Data](./modules/data.md)
+    *   [Módulo Exec](./modules/exec.md)
+    *   [Módulo FS](./modules/fs.md)
     *   [Módulo Git](./modules/git.md)
+    *   [Módulo GCP](./modules/gcp.md)
+    *   [Módulo Log](./modules/log.md)
+    *   [Módulo Net](./modules/net.md)
     *   [Módulo Pulumi](./modules/pulumi.md)
+    *   [Módulo Python](./modules/python.md)
     *   [Módulo Salt](./modules/salt.md)
 *   [Exemplos Avançados](./advanced-examples.md)
 
