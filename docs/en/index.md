@@ -24,6 +24,7 @@ Here you will find detailed guides, API references, and practical examples to he
     *   [Pulumi Module](./modules/pulumi.md)
     *   [Python Module](./modules/python.md)
     *   [Salt Module](./modules/salt.md)
+    *   [Terraform Module](./modules/terraform.md)
 *   [Advanced Examples](./advanced-examples.md)
 
 ---

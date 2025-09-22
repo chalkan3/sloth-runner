@@ -605,6 +605,15 @@ func OpenAll(L *lua.LState) {
 	OpenAWS(L)
 	OpenDigitalOcean(L)
 	OpenAzure(L)
+	OpenTerraform(L)
+}
+
+func OpenTerraform(L *lua.LState) {
+	mod := NewTerraformModule()
+	L.PreloadModule("terraform", mod.Loader)
+	if err := L.DoString(`terraform = require("terraform")`); err != nil {
+		panic(err)
+	}
 }
 
 func OpenAzure(L *lua.LState) {

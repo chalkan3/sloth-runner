@@ -24,6 +24,7 @@
     *   [Pulumi 模块](./modules/pulumi.md)
     *   [Python 模块](./modules/python.md)
     *   [Salt 模块](./modules/salt.md)
+    *   [Terraform 模块](./modules/terraform.md)
 *   [高级示例](./advanced-examples.md)
 
 ---

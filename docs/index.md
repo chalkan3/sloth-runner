@@ -15,6 +15,5 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
     *   [Módulo Git](./modules/git.md)
     *   [Módulo Pulumi](./modules/pulumi.md)
     *   [Módulo Salt](./modules/salt.md)
-    *   [Módulo GCP](./modules/gcp.md)
-    *   [Módulo de Notificações](./modules/notifications.md)
+    *   [Módulo Terraform](./modules/terraform.md)
 *   [Exemplos Avançados](./advanced-examples.md)

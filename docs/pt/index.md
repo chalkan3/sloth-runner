@@ -24,6 +24,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
     *   [Módulo Pulumi](./modules/pulumi.md)
     *   [Módulo Python](./modules/python.md)
     *   [Módulo Salt](./modules/salt.md)
+    *   [Módulo Terraform](./modules/terraform.md)
 *   [Exemplos Avançados](./advanced-examples.md)
 
 ---
