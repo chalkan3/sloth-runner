@@ -8,6 +8,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 
 *   [Início Rápido](./getting-started.md)
 *   [Conceitos Essenciais](./core-concepts.md)
+*   [REPL Interativo](./repl.md)
 *   **Módulos Built-in:**
     *   [Módulo AWS](./modules/aws.md)
     *   [Módulo Azure](./modules/azure.md)

@@ -9,6 +9,7 @@
 *   [快速入门](./getting-started.md)
 *   [核心概念](./core-concepts.md)
 *   [CLI 命令](./CLI.md)
+*   [交互式 REPL](./repl.md)
 *   **内置模块：**
     *   [AWS 模块](./modules/aws.md)
     *   [Azure 模块](./modules/azure.md)
