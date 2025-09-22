@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-//go:embed all:../../ui/dist
+//go:embed dist
 var embeddedFiles embed.FS
 
 // PipelineRun defines the structure for a single pipeline run history.
@@ -64,7 +64,7 @@ func StartServer(db *sql.DB) {
 	r.Get("/ws/runs/{id}", websocketHandler(db))
 
 	// Serve the embedded frontend
-	uiContent, err := fs.Sub(embeddedFiles, "ui/dist")
+	uiContent, err := fs.Sub(embeddedFiles, "dist")
 	if err != nil {
 		log.Fatal("failed to get embedded fs subdirectory: ", err)
 	}

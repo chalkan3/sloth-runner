@@ -23,7 +23,7 @@ import (
 	"github.com/chalkan3/sloth-runner/internal/repl"
 	"github.com/chalkan3/sloth-runner/internal/taskrunner"
 	"github.com/chalkan3/sloth-runner/internal/types"
-	"github.com/chalkan3/sloth-runner/internal/ui"
+	"github.com/chalkan3/sloth-runner/ui"
 	lua "github.com/yuin/gopher-lua"
 )
 
