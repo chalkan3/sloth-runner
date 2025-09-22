@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -22,8 +23,24 @@ import (
 	"github.com/chalkan3/sloth-runner/internal/repl"
 	"github.com/chalkan3/sloth-runner/internal/taskrunner"
 	"github.com/chalkan3/sloth-runner/internal/types"
+	"github.com/chalkan3/sloth-runner/internal/ui"
 	lua "github.com/yuin/gopher-lua"
 )
+
+var uiCmd = &cobra.Command{
+	Use:   "ui",
+	Short: "Starts the web-based UI for viewing pipeline history",
+	Long:  "The ui command starts a local web server to provide a graphical user interface for Sloth-Runner.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		db, err := ui.InitDB()
+		if err != nil {
+			return fmt.Errorf("failed to initialize database: %w", err)
+		}
+		defer db.Close()
+		ui.StartServer(db)
+		return nil
+	},
+}
 
 var replCmd = &cobra.Command{
 	Use:   "repl",
@@ -312,6 +329,47 @@ type TemplateData struct {
 	Shards       []int
 }
 
+// MultiSlogHandler is a slog.Handler that dispatches records to multiple handlers.
+type MultiSlogHandler struct {
+	Handlers []slog.Handler
+}
+
+func (h MultiSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	// Return true if any of the handlers are enabled.
+	for _, handler := range h.Handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h MultiSlogHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, handler := range h.Handlers {
+		if err := handler.Handle(ctx, r); err != nil {
+			// In a real-world scenario, you might want to handle this error differently.
+			fmt.Fprintf(os.Stderr, "Error from slog handler: %v\n", err)
+		}
+	}
+	return nil
+}
+
+func (h MultiSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newHandlers := make([]slog.Handler, len(h.Handlers))
+	for i, handler := range h.Handlers {
+		newHandlers[i] = handler.WithAttrs(attrs)
+	}
+	return MultiSlogHandler{Handlers: newHandlers}
+}
+
+func (h MultiSlogHandler) WithGroup(name string) slog.Handler {
+	newHandlers := make([]slog.Handler, len(h.Handlers))
+	for i, handler := range h.Handlers {
+		newHandlers[i] = handler.WithGroup(name)
+	}
+	return MultiSlogHandler{Handlers: newHandlers}
+}
+
 var (
 	configFilePath string
 	env            string
@@ -469,12 +527,50 @@ var runCmd = &cobra.Command{
 	Long: `The run command executes tasks defined in a Lua template file.
 You can specify the file, environment variables, and target specific tasks or groups.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		db, err := ui.InitDB()
+		if err != nil {
+			// If DB fails, just log it and continue without DB logging.
+			slog.Warn("Could not initialize database for logging. Proceeding without history.", "error", err)
+		}
+		defer func() {
+			if db != nil {
+				db.Close()
+			}
+		}()
+
+		var runID int64
+		if db != nil {
+			group := targetGroup
+			if group == "" {
+				group = "all" // Default group name if none is specified
+			}
+			runID, err = ui.CreateRunEntry(db, group)
+			if err != nil {
+				slog.Warn("Failed to create pipeline run entry in database.", "error", err)
+				db = nil // Disable DB logging for this run
+			}
+		}
+
+		// Setup multi-handler logging
+		var handler slog.Handler
+		consoleHandler := pterm.NewSlogHandler(&pterm.DefaultLogger)
+		if db != nil {
+			dbHandler := ui.NewDBHandler(db, runID)
+			handler = MultiSlogHandler{Handlers: []slog.Handler{consoleHandler, dbHandler}}
+		} else {
+			handler = consoleHandler
+		}
+		slog.SetDefault(slog.New(handler))
+
 		L := lua.NewState()
 		defer L.Close()
 
 		var dummyTr types.TaskRunner = nil
 		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
 		if err != nil {
+			if db != nil {
+				ui.UpdateRunStatus(db, runID, "failed")
+			}
 			return err
 		}
 		var targetTasks []string
@@ -491,6 +587,9 @@ You can specify the file, environment variables, and target specific tasks or gr
 						allTasks = append(allTasks, task.Name)
 					}
 				} else {
+					if db != nil {
+						ui.UpdateRunStatus(db, runID, "failed")
+					}
 					return fmt.Errorf("task group '%s' not found", targetGroup)
 				}
 			} else {
@@ -502,6 +601,9 @@ You can specify the file, environment variables, and target specific tasks or gr
 			}
 			if len(allTasks) == 0 {
 				fmt.Println("No tasks found to run.")
+				if db != nil {
+					ui.UpdateRunStatus(db, runID, "success")
+				}
 				return nil
 			}
 			if yes {
@@ -516,14 +618,24 @@ You can specify the file, environment variables, and target specific tasks or gr
 		}
 		if len(targetTasks) == 0 {
 			fmt.Println("No tasks selected.")
+			if db != nil {
+				ui.UpdateRunStatus(db, runID, "success")
+			}
 			return nil
 		}
 		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
 		luainterface.OpenParallel(L, tr)
 		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {
+			if db != nil {
+				ui.UpdateRunStatus(db, runID, "failed")
+			}
 			return fmt.Errorf("error running tasks: %w", err)
 		}
+		if db != nil {
+			ui.UpdateRunStatus(db, runID, "success")
+		}
+
 		if returnOutput {
 			finalOutputs := make(map[string]interface{})
 			for _, taskName := range targetTasks {
@@ -726,6 +838,7 @@ func init() {
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(replCmd)
+	rootCmd.AddCommand(uiCmd)
 	checkCmd.AddCommand(dependenciesCmd)
 
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
