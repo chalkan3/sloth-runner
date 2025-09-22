@@ -59,18 +59,12 @@ func StartServer(db *sql.DB) {
 	// WebSocket route
 	r.Get("/ws/runs/{id}", websocketHandler(db))
 
-	// Serve the embedded frontend
-	// content, err := fs.Sub(embeddedFiles, "ui/dist")
-	// if err != nil {
-	// 	log.Fatal("failed to get embedded fs subdirectory: ", err)
-	// }
-	// r.Handle("/*", http.FileServer(http.FS(content)))
-
 	log.Println("Starting Sloth-Runner UI on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
+
 func getRunsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query("SELECT id, group_name, status, start_time, end_time FROM pipeline_runs ORDER BY start_time DESC")
