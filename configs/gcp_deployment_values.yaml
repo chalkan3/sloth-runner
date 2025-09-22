@@ -1,0 +1,45 @@
+# configs/gcp_deployment_values.yaml
+#
+# Configuration values for the gcp_pulumi_orchestration.lua pipeline.
+
+# Base paths for cloning the repositories and creating the Python venv.
+paths:
+  base_workdir: "/tmp/gcp_pulumi_orchestration"
+  spoke_venv: "/tmp/gcp_pulumi_orchestration/spoke_venv"
+
+# Git repository configurations.
+repos:
+  hub:
+    url: "https://github.com/chalkan3/gcp-hub-spoke"
+    path: "/tmp/gcp_pulumi_orchestration/hub"
+  spoke:
+    url: "https://github.com/chalkan3/gcp-host-manager"
+    path: "/tmp/gcp_pulumi_orchestration/spoke"
+
+# Pulumi configuration.
+pulumi:
+  login_url: "gs://pulumi-state-backend-chalkan3/"
+  hub:
+    stack_name: "hub-dev"
+    config:
+      gcp-hub-spoke:project: "chalkan3"
+      gcp-hub-spoke:region: "us-central1"
+      gcp-hub-spoke:hub-vpc:
+        name: "sloth-runner-hub-network"
+        cidr: "10.0.0.0/16"
+        subnets:
+          - name: "subnet-a"
+            cidr: "10.0.1.0/24"
+            region: "us-central1"
+          - name: "subnet-b"
+            cidr: "10.0.2.0/24"
+            region: "us-central1"
+      gcp-hub-spoke:spoke-vpcs: []
+  spoke:
+    stack_name: "spoke-dev"
+    config:
+      gcp-host-manager:project: "chalkan3"
+      gcp-host-manager:region: "us-central1"
+      gcp-host-manager:instance_name: "sloth-runner-spoke-instance"
+      gcp-host-manager:instance_type: "e2-medium"
+      # The 'hub_network_self_link' will be injected dynamically by the pipeline.
