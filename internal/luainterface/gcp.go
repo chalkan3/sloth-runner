@@ -12,6 +12,8 @@ import (
 const (
 	luaGCPClientTypeName         = "gcp_client"
 	luaGCPServiceAccountTypeName = "gcp_service_account"
+	luaGCPComputeTypeName        = "gcp_compute"
+	luaGCPInstancesTypeName      = "gcp_instances"
 )
 
 // GCPClient represents a client for GCP operations.
@@ -25,6 +27,17 @@ type GCPServiceAccount struct {
 	Name    string
 	Email   string
 	Project string
+}
+
+// GCPCompute represents the compute service client.
+type GCPCompute struct {
+	Client *GCPClient
+	Zone   string
+}
+
+// GCPInstances represents the instances service client.
+type GCPInstances struct {
+	Compute *GCPCompute
 }
 
 // --- Constructors ---
@@ -59,6 +72,24 @@ func checkGCPServiceAccount(L *lua.LState) *GCPServiceAccount {
 		return v
 	}
 	L.ArgError(1, "gcp service account expected")
+	return nil
+}
+
+func checkGCPCompute(L *lua.LState) *GCPCompute {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPCompute); ok {
+		return v
+	}
+	L.ArgError(1, "gcp compute expected")
+	return nil
+}
+
+func checkGCPInstances(L *lua.LState) *GCPInstances {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPInstances); ok {
+		return v
+	}
+	L.ArgError(1, "gcp instances expected")
 	return nil
 }
 
@@ -105,6 +136,55 @@ func (c *GCPClient) serviceAccount(L *lua.LState) int {
 	ud.Value = sa
 	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPServiceAccountTypeName))
 	L.Push(ud)
+	return 1
+}
+
+// client:compute({ zone = "..." }) -> compute
+func (c *GCPClient) compute(L *lua.LState) int {
+	opts := L.OptTable(2, L.NewTable())
+	zone := opts.RawGetString("zone").String()
+
+	compute := &GCPCompute{
+		Client: c,
+		Zone:   zone,
+	}
+	ud := L.NewUserData()
+	ud.Value = compute
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPComputeTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// --- Compute Methods ---
+
+// compute:instances() -> instances
+func (c *GCPCompute) instances(L *lua.LState) int {
+	instances := &GCPInstances{
+		Compute: c,
+	}
+	ud := L.NewUserData()
+	ud.Value = instances
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPInstancesTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// --- Instances Methods ---
+
+// instances:list() -> { success, stdout, stderr }
+func (i *GCPInstances) list(L *lua.LState) int {
+	args := []string{"compute", "instances", "list", "--format=json"}
+	if i.Compute.Zone != "" {
+		args = append(args, "--zones", i.Compute.Zone)
+	}
+
+	stdout, stderr, err := i.Compute.Client.runGCloudCommand(args...)
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(err == nil))
+	result.RawSetString("stdout", lua.LString(stdout))
+	result.RawSetString("stderr", lua.LString(stderr))
+	L.Push(result)
 	return 1
 }
 
@@ -164,6 +244,10 @@ var gcpClientMethods = map[string]lua.LGFunction{
 		client := checkGCPClient(L)
 		return client.serviceAccount(L)
 	},
+	"compute": func(L *lua.LState) int {
+		client := checkGCPClient(L)
+		return client.compute(L)
+	},
 }
 
 var gcpServiceAccountMethods = map[string]lua.LGFunction{
@@ -177,6 +261,20 @@ var gcpServiceAccountMethods = map[string]lua.LGFunction{
 	},
 }
 
+var gcpComputeMethods = map[string]lua.LGFunction{
+	"instances": func(L *lua.LState) int {
+		compute := checkGCPCompute(L)
+		return compute.instances(L)
+	},
+}
+
+var gcpInstancesMethods = map[string]lua.LGFunction{
+	"list": func(L *lua.LState) int {
+		instances := checkGCPInstances(L)
+		return instances.list(L)
+	},
+}
+
 func GCPLoader(L *lua.LState) int {
 	// Register client type
 	clientMT := L.NewTypeMetatable(luaGCPClientTypeName)
@@ -185,6 +283,14 @@ func GCPLoader(L *lua.LState) int {
 	// Register service account type
 	saMT := L.NewTypeMetatable(luaGCPServiceAccountTypeName)
 	L.SetField(saMT, "__index", L.SetFuncs(L.NewTable(), gcpServiceAccountMethods))
+
+	// Register compute type
+	computeMT := L.NewTypeMetatable(luaGCPComputeTypeName)
+	L.SetField(computeMT, "__index", L.SetFuncs(L.NewTable(), gcpComputeMethods))
+
+	// Register instances type
+	instancesMT := L.NewTypeMetatable(luaGCPInstancesTypeName)
+	L.SetField(instancesMT, "__index", L.SetFuncs(L.NewTable(), gcpInstancesMethods))
 
 	// Register module
 	mod := L.NewTable()
