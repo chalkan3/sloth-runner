@@ -54,5 +54,6 @@ pulumi:
       gcp-host-manager:region: "us-central1"
       gcp-host-manager:instance_name: "sloth-runner-spoke-instance"
       gcp-host-manager:instance_type: "e2-medium"
+      gcp-host-manager:subnet_name: "dev-subnet-apps"
       gcp-host-manager:hub-spoke-stack-reference: "organization/gcp-hub-spoke/hub-dev"
       # The 'hub_network_self_link' will be injected dynamically by the pipeline.
