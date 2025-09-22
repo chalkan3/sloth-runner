@@ -167,18 +167,23 @@ func pulumiStackOutputs(L *lua.LState) int {
 	stack := checkPulumiStack(L, 1)
 	cmd := setupPulumiCmd(stack, "stack", "output", "--json")
 
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &bytes.Buffer{} // Ignore stderr for outputs
-
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		L.RaiseError("failed to get outputs: %v\n%s", err, cmd.Stderr.(*bytes.Buffer).String())
+		L.RaiseError("failed to get outputs: %v\n%s", err, string(output))
 		return 0
 	}
 
+	// Find the start of the JSON object
+	jsonStartIndex := bytes.IndexByte(output, '{')
+	if jsonStartIndex == -1 {
+		L.RaiseError("failed to find start of json in pulumi output: %s", string(output))
+		return 0
+	}
+
+	jsonOutput := output[jsonStartIndex:]
+
 	var outputs map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &outputs); err != nil {
+	if err := json.Unmarshal(jsonOutput, &outputs); err != nil {
 		L.RaiseError("failed to parse pulumi outputs json: %v", err)
 		return 0
 	}

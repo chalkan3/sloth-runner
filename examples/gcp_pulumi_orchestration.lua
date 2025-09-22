@@ -31,6 +31,7 @@ TaskDefinitions = {
 
           local spoke_venv = python.venv(values.paths.spoke_venv)
             :create()
+            :pip("install setuptools")
             :pip("install -r " .. spoke_repo.path .. "/requirements.txt")
 
           log.info("Python venv for spoke is ready at: " .. values.paths.spoke_venv)
@@ -76,7 +77,7 @@ TaskDefinitions = {
 
           local spoke_result = spoke_stack:up({ yes = true })
           if not spoke_result.success then
-            log.error("Spoke stack deployment failed: " .. spoke_result.stderr)
+            log.error("Spoke stack deployment failed: " .. spoke_result.stdout)
             return false, "Spoke stack deployment failed."
           end
 

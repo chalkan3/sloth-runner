@@ -12,7 +12,9 @@ import (
 const (
 	luaGCPClientTypeName         = "gcp_client"
 	luaGCPServiceAccountTypeName = "gcp_service_account"
+	luaGCPComputeTypeName        = "gcp_compute"
 	luaGCPInstancesTypeName      = "gcp_instances"
+	luaGCPStorageTypeName        = "gcp_storage"
 	luaGCPBucketsTypeName        = "gcp_buckets"
 	luaGCPSqlTypeName            = "gcp_sql"
 	luaGCPSqlInstancesTypeName   = "gcp_sql_instances"
