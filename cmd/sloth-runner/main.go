@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -649,6 +650,56 @@ Inside the test file, you can use the 'test' and 'assert' modules to validate ta
 	},
 }
 
+var checkCmd = &cobra.Command{
+	Use:   "check",
+	Short: "Run checks for the environment and configuration",
+	Long:  "Provides commands to check for dependencies, configuration, and other environment requirements.",
+}
+
+var dependenciesCmd = &cobra.Command{
+	Use:   "dependencies",
+	Short: "Checks for required external CLI tools",
+	Long:  "Verifies that all external command-line tools used by the various modules (e.g., docker, aws, doctl) are installed and available in the system's PATH.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return checkDependencies()
+	},
+}
+
+func checkDependencies() error {
+	dependencies := []string{
+		"docker",
+		"aws",
+		"doctl",
+		"az",
+		"terraform",
+		"git",
+		"pulumi",
+		"salt",
+	}
+
+	pterm.DefaultSection.Println("Checking for required dependencies...")
+	var missing []string
+
+	for _, dep := range dependencies {
+		_, err := exec.LookPath(dep)
+		if err != nil {
+			pterm.Error.Printf("✗ %s (missing)\n", dep)
+			missing = append(missing, dep)
+		} else {
+			pterm.Success.Printf("✓ %s (found)\n", dep)
+		}
+	}
+
+	if len(missing) > 0 {
+		pterm.Warning.Printf("The following dependencies are missing: %s\n", strings.Join(missing, ", "))
+		pterm.Println("Please install them to ensure all modules work correctly.")
+		return fmt.Errorf("missing %d dependencies", len(missing))
+	}
+
+	pterm.Success.Println("All dependencies found!")
+	return nil
+}
+
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
@@ -658,6 +709,8 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(checkCmd)
+	checkCmd.AddCommand(dependenciesCmd)
 
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
 	newCmd.Flags().StringVarP(&templateName, "template", "t", "simple", "Template to use. See 'template list' for options.")
