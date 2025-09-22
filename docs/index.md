@@ -10,6 +10,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Conceitos Essenciais](./core-concepts.md)
 *   **Módulos Built-in:**
     *   [Módulo AWS](./modules/aws.md)
+    *   [Módulo Azure](./modules/azure.md)
     *   [Módulo DigitalOcean](./modules/digitalocean.md)
     *   [Módulo Git](./modules/git.md)
     *   [Módulo Pulumi](./modules/pulumi.md)

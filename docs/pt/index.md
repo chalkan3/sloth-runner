@@ -11,6 +11,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Comandos da CLI](./CLI.md)
 *   **Módulos Built-in:**
     *   [Módulo AWS](./modules/aws.md)
+    *   [Módulo Azure](./modules/azure.md)
     *   [Módulo Data](./modules/data.md)
     *   [Módulo DigitalOcean](./modules/digitalocean.md)
     *   [Módulo Exec](./modules/exec.md)

@@ -11,6 +11,7 @@ Here you will find detailed guides, API references, and practical examples to he
 *   [CLI Commands](./CLI.md)
 *   **Built-in Modules:**
     *   [AWS Module](./modules/aws.md)
+    *   [Azure Module](./modules/azure.md)
     *   [Data Module](./modules/data.md)
     *   [DigitalOcean Module](./modules/digitalocean.md)
     *   [Exec Module](./modules/exec.md)

@@ -11,6 +11,7 @@
 *   [CLI 命令](./CLI.md)
 *   **内置模块：**
     *   [AWS 模块](./modules/aws.md)
+    *   [Azure 模块](./modules/azure.md)
     *   [Data 模块](./modules/data.md)
     *   [DigitalOcean 模块](./modules/digitalocean.md)
     *   [Exec 模块](./modules/exec.md)

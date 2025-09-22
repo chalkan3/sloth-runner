@@ -604,6 +604,15 @@ func OpenAll(L *lua.LState) {
 	OpenNotifications(L)
 	OpenAWS(L)
 	OpenDigitalOcean(L)
+	OpenAzure(L)
+}
+
+func OpenAzure(L *lua.LState) {
+	mod := NewAzureModule()
+	L.PreloadModule("azure", mod.Loader)
+	if err := L.DoString(`azure = require("azure")`); err != nil {
+		panic(err)
+	}
 }
 
 func OpenDigitalOcean(L *lua.LState) {
