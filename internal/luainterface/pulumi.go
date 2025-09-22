@@ -98,6 +98,9 @@ func pulumiStackFn(L *lua.LState) int {
 		}
 	}
 
+	// Check for login option and store it in the stack object
+	loginURL = opts.RawGetString("login").String()
+
 	stack := &pulumiStack{
 		Name:     name,
 		WorkDir:  workdir,
@@ -194,27 +197,73 @@ func pulumiStackConfig(L *lua.LState) int {
 	value := L.CheckString(3)
 	isSecret := L.OptBool(4, false)
 
-	quotedValue := fmt.Sprintf("'%s'", value)
-
-	configCmdParts := []string{"config", "set", key, quotedValue, "--stack", stack.Name}
+	// Pulumi requires string values to be quoted if they might be parsed as something else.
+	// Let's just quote them to be safe, but we need to handle this carefully.
+	// For now, we assume simple string values.
+	configCmdParts := []string{"config", "set", key, value, "--stack", stack.Name}
 	if isSecret {
 		configCmdParts = append(configCmdParts, "--secret")
 	}
 
 	cmd := setupPulumiCmd(stack, configCmdParts...)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	success := err == nil
+	if err := cmd.Run(); err != nil {
+		L.RaiseError("pulumi config set for key '%s' failed: %s", key, stderr.String())
+	}
 
-	result := L.NewTable()
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
-	result.RawSetString("success", lua.LBool(success))
-	L.Push(result)
+	L.Push(L.Get(1)) // Return self for chaining
+	return 1
+}
+
+func pulumiStackConfigMap(L *lua.LState) int {
+	stack := checkPulumiStack(L, 1)
+	configs := L.CheckTable(2)
+
+	configs.ForEach(func(key lua.LValue, value lua.LValue) {
+		var valueStr string
+		keyStr := key.String()
+		pathMode := false
+		        if value.Type() == lua.LTTable {
+		            // It's a complex object, marshal it to JSON
+		            goValue := LuaToGoValue(L, value)
+		            jsonBytes, err := json.Marshal(goValue)
+		            if err != nil {
+		                L.RaiseError("failed to marshal config value to JSON for key '%s': %s", key.String(), err.Error())
+		            }
+		            // Wrap in single quotes for the shell
+		            valueStr = "'" + string(jsonBytes) + "'"
+		        } else {			// It's a simple value
+			valueStr = value.String()
+		}
+
+		var configCmdParts []string
+		if pathMode {
+			// For complex objects, we set the parent key and let Pulumi handle the object structure.
+			// The key might be like "gcp-hub-spoke:hub-vpc", we just want "hub-vpc" as the path.
+			pathKey := strings.SplitN(keyStr, ":", 2)
+			if len(pathKey) == 2 {
+				configCmdParts = []string{"config", "set", "--path", pathKey[1], valueStr, "--stack", stack.Name}
+			} else {
+				L.RaiseError("invalid config key format for complex object: %s", keyStr)
+			}
+		} else {
+			configCmdParts = []string{"config", "set", keyStr, valueStr, "--stack", stack.Name}
+		}
+
+		cmd := setupPulumiCmd(stack, configCmdParts...)
+
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			L.RaiseError("pulumi config set for key '%s' failed: %s", key.String(), stderr.String())
+		}
+	})
+
+	L.Push(L.Get(1)) // Return self for chaining
 	return 1
 }
 
@@ -244,36 +293,25 @@ func pulumiInstallPluginFn(L *lua.LState) int {
 }
 
 var pulumiStackMethods = map[string]lua.LGFunction{
-	"up":      pulumiStackUp,
-	"preview": pulumiStackPreview,
-	"destroy": pulumiStackDestroy,
-	"outputs": pulumiStackOutputs,
-	"config":  pulumiStackConfig,
-	"select":  pulumiStackSelect,
+	"up":         pulumiStackUp,
+	"preview":    pulumiStackPreview,
+	"destroy":    pulumiStackDestroy,
+	"outputs":    pulumiStackOutputs,
+	"config":     pulumiStackConfig,
+	"config_map": pulumiStackConfigMap,
+	"select":     pulumiStackSelect,
 }
 
 func pulumiStackSelect(L *lua.LState) int {
 	stack := checkPulumiStack(L, 1)
-
-	args := []string{"stack", "select", stack.Name}
-	if lua.LVAsBool(L.OptTable(2, L.NewTable()).RawGetString("create")) {
-		args = append(args, "--create")
-	}
-
-	cmd := setupPulumiCmd(stack, args...)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	// Always try to create, as it's a no-op if it exists
+	cmd := setupPulumiCmd(stack, "stack", "select", stack.Name, "--create")
+	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	success := err == nil
-
-	result := L.NewTable()
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
-	result.RawSetString("success", lua.LBool(success))
-	L.Push(result)
+	if err := cmd.Run(); err != nil {
+		L.RaiseError("pulumi stack select failed: %s", stderr.String())
+	}
+	L.Push(L.Get(1)) // Return self for chaining
 	return 1
 }
 

@@ -54,13 +54,11 @@ func venvExists(L *lua.LState) int {
 // venvCreate executes `python3 -m venv <path>` to create the virtual environment.
 func venvCreate(L *lua.LState) int {
 	venv := L.CheckUserData(1).Value.(*types.PythonVenv)
-	success, stdout, stderr := runCommand("python3", "-m", "venv", venv.Path)
-
-	result := L.NewTable()
-	result.RawSetString("success", lua.LBool(success))
-	result.RawSetString("stdout", lua.LString(stdout))
-	result.RawSetString("stderr", lua.LString(stderr))
-	L.Push(result)
+	success, _, stderr := runCommand("python3", "-m", "venv", venv.Path)
+	if !success {
+		L.RaiseError("failed to create python venv: %s", stderr)
+	}
+	L.Push(L.Get(1)) // Return self for chaining
 	return 1
 }
 
@@ -72,13 +70,11 @@ func venvPip(L *lua.LState) int {
 	args := strings.Fields(argsStr) // Split the argument string into a slice
 
 	pipPath := filepath.Join(venv.Path, "bin", "pip")
-	success, stdout, stderr := runCommand(pipPath, args...)
-
-	result := L.NewTable()
-	result.RawSetString("success", lua.LBool(success))
-	result.RawSetString("stdout", lua.LString(stdout))
-	result.RawSetString("stderr", lua.LString(stderr))
-	L.Push(result)
+	success, _, stderr := runCommand(pipPath, args...)
+	if !success {
+		L.RaiseError("failed to run pip command: %s", stderr)
+	}
+	L.Push(L.Get(1)) // Return self for chaining
 	return 1
 }
 

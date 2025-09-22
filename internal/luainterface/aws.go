@@ -3,194 +3,174 @@ package luainterface
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os/exec"
 
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 )
 
-// AWSModule provides AWS functionalities to Lua scripts
-type AWSModule struct{}
+const (
+	luaAWSClientTypeName = "aws_client"
+	luaAWSS3TypeName     = "aws_s3"
+)
 
-// NewAWSModule creates a new AWSModule
-func NewAWSModule() *AWSModule {
-	return &AWSModule{}
+// AWSClient represents a client for AWS operations.
+type AWSClient struct {
+	Profile string
 }
 
-// Loader returns the Lua loader for the aws module
-func (mod *AWSModule) Loader(L *lua.LState) int {
-	awsTable := L.NewTable()
+// AWSS3 represents the S3 service.
+type AWSS3 struct {
+	Client *AWSClient
+}
 
-	// Register aws.exec
-	L.SetFuncs(awsTable, map[string]lua.LGFunction{
-		"exec": mod.awsExec,
-	})
+// --- Constructor ---
 
-	// Create and register the s3 submodule
-	s3Module := L.NewTable()
-	L.SetFuncs(s3Module, map[string]lua.LGFunction{
-		"sync": mod.s3Sync,
-	})
-	awsTable.RawSetString("s3", s3Module)
+// aws.client({ profile = "my-profile" }) -> client
+func newAWSClient(L *lua.LState) int {
+	opts := L.OptTable(1, L.NewTable())
+	profile := opts.RawGetString("profile").String()
 
-	// Create and register the secretsmanager submodule
-	secretsManagerModule := L.NewTable()
-	L.SetFuncs(secretsManagerModule, map[string]lua.LGFunction{
-		"get_secret": mod.secretsManagerGetSecret,
-	})
-	awsTable.RawSetString("secretsmanager", secretsManagerModule)
-
-	L.Push(awsTable)
+	client := &AWSClient{Profile: profile}
+	ud := L.NewUserData()
+	ud.Value = client
+	L.SetMetatable(ud, L.GetTypeMetatable(luaAWSClientTypeName))
+	L.Push(ud)
 	return 1
 }
 
-// awsExec is the generic executor for AWS CLI commands.
-// Lua usage: aws.exec({"s3", "ls"}, {profile = "my-profile"})
-func (mod *AWSModule) awsExec(L *lua.LState) int {
-	argsTable := L.CheckTable(1)
-	optsTable := L.OptTable(2, L.NewTable())
-	profile := optsTable.RawGetString("profile").String()
+// --- Helpers ---
 
-	var args []string
-	argsTable.ForEach(func(_, val lua.LValue) {
-		args = append(args, val.String())
-	})
+func checkAWSClient(L *lua.LState) *AWSClient {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*AWSClient); ok {
+		return v
+	}
+	L.ArgError(1, "aws client expected")
+	return nil
+}
 
-	var command string
-	var commandArgs []string
+func checkAWSS3(L *lua.LState) *AWSS3 {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*AWSS3); ok {
+		return v
+	}
+	L.ArgError(1, "aws s3 object expected")
+	return nil
+}
 
-	if profile != "" {
-		command = "aws-vault"
-		commandArgs = append([]string{"exec", profile, "--", "aws"}, args...)
+func (c *AWSClient) runAWSCommand(args ...string) (string, string, error) {
+	var cmd *exec.Cmd
+	if c.Profile != "" {
+		cmdArgs := append([]string{"exec", c.Profile, "--", "aws"}, args...)
+		cmd = exec.Command("aws-vault", cmdArgs...)
 	} else {
-		command = "aws"
-		commandArgs = args
+		cmd = exec.Command("aws", args...)
 	}
 
-	cmd := exec.Command(command, commandArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
 
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1 // Indicates an error other than a non-zero exit code
-		}
-	}
+// --- Client Methods ---
 
-	result := L.NewTable()
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
-	result.RawSetString("exit_code", lua.LNumber(exitCode))
-
-	L.Push(result)
+// client:s3() -> s3_obj
+func (c *AWSClient) s3(L *lua.LState) int {
+	s3 := &AWSS3{Client: c}
+	ud := L.NewUserData()
+	ud.Value = s3
+	L.SetMetatable(ud, L.GetTypeMetatable(luaAWSS3TypeName))
+	L.Push(ud)
 	return 1
 }
 
-// s3Sync provides a high-level interface for `aws s3 sync`.
-// Lua usage: aws.s3.sync({source="...", destination="...", profile="...", delete=true})
-func (mod *AWSModule) s3Sync(L *lua.LState) int {
-	tbl := L.CheckTable(1)
-	source := tbl.RawGetString("source").String()
-	destination := tbl.RawGetString("destination").String()
-	profile := tbl.RawGetString("profile").String()
-	del := lua.LVAsBool(tbl.RawGetString("delete"))
-
-	if source == "" || destination == "" {
-		L.Push(lua.LBool(false))
-		L.Push(lua.LString("source and destination are required for s3.sync"))
-		return 2
-	}
-
-	args := []string{"s3", "sync", source, destination}
-	if del {
-		args = append(args, "--delete")
-	}
-
-	// Call the generic exec function
-	L.Push(L.NewFunction(mod.awsExec))
-	argsTable := L.NewTable()
-	for _, arg := range args {
-		argsTable.Append(lua.LString(arg))
-	}
-	L.Push(argsTable)
-
-	optsTable := L.NewTable()
-	if profile != "" {
-		optsTable.RawSetString("profile", lua.LString(profile))
-	}
-	L.Push(optsTable)
-
-	L.Call(2, 1)
-	result := L.CheckTable(L.GetTop())
-	exitCode := int(result.RawGetString("exit_code").(lua.LNumber))
-
-	if exitCode != 0 {
-		L.Push(lua.LBool(false))
-		L.Push(result.RawGetString("stderr"))
-		return 2
-	}
-
-	L.Push(lua.LBool(true))
-	return 1
-}
-
-// secretsManagerGetSecret retrieves a secret from AWS Secrets Manager.
-// Lua usage: aws.secretsmanager.get_secret({secret_id="...", profile="..."})
-func (mod *AWSModule) secretsManagerGetSecret(L *lua.LState) int {
-	tbl := L.CheckTable(1)
-	secretID := tbl.RawGetString("secret_id").String()
-	profile := tbl.RawGetString("profile").String()
-
-	if secretID == "" {
-		L.Push(lua.LNil)
-		L.Push(lua.LString("secret_id is required"))
-		return 2
-	}
-
+// client:get_secret("secret-id") -> secret_string
+func (c *AWSClient) getSecret(L *lua.LState) int {
+	secretID := L.CheckString(2)
 	args := []string{"secretsmanager", "get-secret-value", "--secret-id", secretID}
 
-	// Call the generic exec function
-	L.Push(L.NewFunction(mod.awsExec))
-	argsTable := L.NewTable()
-	for _, arg := range args {
-		argsTable.Append(lua.LString(arg))
-	}
-	L.Push(argsTable)
-
-	optsTable := L.NewTable()
-	if profile != "" {
-		optsTable.RawSetString("profile", lua.LString(profile))
-	}
-	L.Push(optsTable)
-
-	L.Call(2, 1)
-	result := L.CheckTable(L.GetTop())
-	exitCode := int(result.RawGetString("exit_code").(lua.LNumber))
-	stdout := result.RawGetString("stdout").String()
-	stderr := result.RawGetString("stderr").String()
-
-	if exitCode != 0 {
-		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("Failed to get secret: %s", stderr)))
-		return 2
+	stdout, stderr, err := c.runAWSCommand(args...)
+	if err != nil {
+		L.RaiseError("aws secretsmanager get-secret-value failed: %s", stderr)
 	}
 
 	var secretResponse struct {
 		SecretString string `json:"SecretString"`
 	}
-
 	if err := json.Unmarshal([]byte(stdout), &secretResponse); err != nil {
-		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("Failed to parse secret JSON: %v", err)))
-		return 2
+		L.RaiseError("failed to parse secret JSON: %v", err)
 	}
 
 	L.Push(lua.LString(secretResponse.SecretString))
 	return 1
+}
+
+// --- S3 Methods ---
+
+// s3:sync({ from = "...", to = "...", delete = false }) -> self
+func (s3 *AWSS3) sync(L *lua.LState) int {
+	opts := L.CheckTable(2)
+	from := opts.RawGetString("from").String()
+	to := opts.RawGetString("to").String()
+	del := lua.LVAsBool(opts.RawGetString("delete"))
+
+	if from == "" || to == "" {
+		L.RaiseError("from and to are required for s3:sync")
+	}
+
+	args := []string{"s3", "sync", from, to}
+	if del {
+		args = append(args, "--delete")
+	}
+
+	_, stderr, err := s3.Client.runAWSCommand(args...)
+	if err != nil {
+		L.RaiseError("aws s3 sync failed: %s", stderr)
+	}
+
+	L.Push(L.Get(1)) // return self
+	return 1
+}
+
+// --- Loaders ---
+
+var awsClientMethods = map[string]lua.LGFunction{
+	"s3": func(L *lua.LState) int {
+		client := checkAWSClient(L)
+		return client.s3(L)
+	},
+	"get_secret": func(L *lua.LState) int {
+		client := checkAWSClient(L)
+		return client.getSecret(L)
+	},
+}
+
+var awsS3Methods = map[string]lua.LGFunction{
+	"sync": func(L *lua.LState) int {
+		s3 := checkAWSS3(L)
+		return s3.sync(L)
+	},
+}
+
+func AWSLoader(L *lua.LState) int {
+	// Register client type
+	clientMT := L.NewTypeMetatable(luaAWSClientTypeName)
+	L.SetField(clientMT, "__index", L.SetFuncs(L.NewTable(), awsClientMethods))
+
+	// Register S3 type
+	s3MT := L.NewTypeMetatable(luaAWSS3TypeName)
+	L.SetField(s3MT, "__index", L.SetFuncs(L.NewTable(), awsS3Methods))
+
+	// Register module
+	mod := L.NewTable()
+	L.SetField(mod, "client", L.NewFunction(newAWSClient))
+	L.Push(mod)
+	return 1
+}
+
+func OpenAWS(L *lua.LState) {
+	L.PreloadModule("aws", AWSLoader)
 }

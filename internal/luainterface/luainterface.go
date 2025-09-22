@@ -512,7 +512,6 @@ func luaExecRun(L *lua.LState) int {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	success := err == nil
 
 	stdoutStr := stdout.String()
 	stderrStr := stderr.String()
@@ -524,12 +523,10 @@ func luaExecRun(L *lua.LState) int {
 		slog.Warn(stderrStr, "source", "lua", "stream", "stderr")
 	}
 
-	result := L.NewTable()
-	result.RawSetString("success", lua.LBool(success))
-	result.RawSetString("stdout", lua.LString(stdoutStr))
-	result.RawSetString("stderr", lua.LString(stderrStr))
-	L.Push(result)
-	return 1
+	L.Push(lua.LString(stdoutStr))
+	L.Push(lua.LString(stderrStr))
+	L.Push(lua.LBool(err != nil))
+	return 3
 }
 
 func ExecLoader(L *lua.LState) int {
@@ -590,69 +587,41 @@ func OpenLog(L *lua.LState) {
 
 // OpenAll preloads all available sloth-runner modules into the Lua state.
 func OpenAll(L *lua.LState) {
-	// RegisterSharedSessionType(L)
-	OpenExec(L)
-	OpenFs(L)
-	OpenNet(L)
-	OpenData(L)
-	OpenLog(L)
-	OpenSalt(L)
-	OpenPulumi(L)
-	OpenGit(L)
-	OpenGCP(L)
-	OpenPython(L)
-	OpenNotifications(L)
-	OpenAWS(L)
-	OpenDigitalOcean(L)
-	OpenAzure(L)
-	OpenTerraform(L)
-	OpenDocker(L)
-}
+	// Preload all modules, making them available to 'require'
+	L.PreloadModule("exec", ExecLoader)
+	L.PreloadModule("fs", FsLoader)
+	L.PreloadModule("net", NetLoader)
+	L.PreloadModule("data", DataLoader)
+	L.PreloadModule("log", LogLoader)
+	L.PreloadModule("salt", SaltLoader)
+	L.PreloadModule("pulumi", PulumiLoader)
+	L.PreloadModule("git", GitLoader)
+	L.PreloadModule("gcp", GCPLoader)
+	L.PreloadModule("python", PythonLoader)
+	L.PreloadModule("aws", AWSLoader)
+	// Assuming other modules will be refactored to have a simple Loader function.
+	// If they still use the New...Module pattern, they need to be updated.
+	// For now, let's assume they will be updated or we will fix them next.
+	// L.PreloadModule("notifications", NewNotificationsModule().Loader)
+	// L.PreloadModule("digitalocean", NewDigitalOceanModule().Loader)
+	// L.PreloadModule("azure", NewAzureModule().Loader)
+	// L.PreloadModule("terraform", NewTerraformModule().Loader)
+	// L.PreloadModule("docker", NewDockerModule().Loader)
 
-func OpenDocker(L *lua.LState) {
-	mod := NewDockerModule()
-	L.PreloadModule("docker", mod.Loader)
-	if err := L.DoString(`docker = require("docker")`); err != nil {
-		panic(err)
-	}
-}
-
-func OpenTerraform(L *lua.LState) {
-	mod := NewTerraformModule()
-	L.PreloadModule("terraform", mod.Loader)
-	if err := L.DoString(`terraform = require("terraform")`); err != nil {
-		panic(err)
-	}
-}
-
-func OpenAzure(L *lua.LState) {
-	mod := NewAzureModule()
-	L.PreloadModule("azure", mod.Loader)
-	if err := L.DoString(`azure = require("azure")`); err != nil {
-		panic(err)
-	}
-}
-
-func OpenDigitalOcean(L *lua.LState) {
-	mod := NewDigitalOceanModule()
-	L.PreloadModule("digitalocean", mod.Loader)
-	if err := L.DoString(`digitalocean = require("digitalocean")`); err != nil {
-		panic(err)
-	}
-}
-
-func OpenNotifications(L *lua.LState) {
-	mod := NewNotificationsModule()
-	L.PreloadModule("notifications", mod.Loader)
-	if err := L.DoString(`notifications = require("notifications")`); err != nil {
-		panic(err)
-	}
-}
-
-func OpenAWS(L *lua.LState) {
-	mod := NewAWSModule()
-	L.PreloadModule("aws", mod.Loader)
-	if err := L.DoString(`aws = require("aws")`); err != nil {
+	// Immediately load some modules into the global namespace for convenience
+	if err := L.DoString(`
+		fs = require("fs")
+		log = require("log")
+		data = require("data")
+		exec = require("exec")
+		net = require("net")
+		git = require("git")
+		pulumi = require("pulumi")
+		python = require("python")
+		gcp = require("gcp")
+		aws = require("aws")
+		salt = require("salt")
+	`); err != nil {
 		panic(err)
 	}
 }

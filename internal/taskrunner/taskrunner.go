@@ -76,7 +76,7 @@ func (tr *TaskRunner) Export(data map[string]interface{}) {
 	}
 }
 
-func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession) error {
+func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession, groupName string) error {
 	// AbortIf check
 	if t.AbortIfFunc != nil {
 		shouldAbort, _, _, err := luainterface.ExecuteLuaFunction(tr.L, t.AbortIfFunc, t.Params, inputFromDependencies, 1, nil)
@@ -157,7 +157,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 		}
 		defer cancel()
 
-		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks, session)
+		taskErr = tr.runTask(ctx, t, inputFromDependencies, mu, completedTasks, taskOutputs, runningTasks, session, groupName)
 
 		if taskErr == nil {
 			slog.Info("task finished", "task", t.Name, "status", "success")
@@ -169,7 +169,7 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 	return taskErr // Final failure
 }
 
-func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession) (taskErr error) {
+func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession, groupName string) (taskErr error) {
 	startTime := time.Now()
 
 	L := lua.NewState()
@@ -214,6 +214,13 @@ t.Output = L.NewTable()
 	}
 
 	if t.CommandFunc != nil {
+		if t.Params == nil {
+			t.Params = make(map[string]string)
+		}
+		t.Params["task_name"] = t.Name
+		t.Params["group_name"] = groupName
+		t.Params["workdir"] = session.Workdir
+
 		var sessionUD *lua.LUserData
 		if session != nil {
 			sessionUD = L.NewUserData()
@@ -378,7 +385,7 @@ func (tr *TaskRunner) Run() error {
 				}
 			}
 
-			err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks, session)
+			err := tr.executeTaskWithRetries(task, inputFromDependencies, &mu, completedTasks, taskOutputs, runningTasks, session, groupName)
 			if err != nil {
 				groupErrors = append(groupErrors, err)
 				taskStatus[task.Name] = "Failed"
@@ -426,6 +433,13 @@ func (tr *TaskRunner) Run() error {
 			resultTable.RawSetString("success", lua.LBool(groupHadSuccess))
 			if !groupHadSuccess && len(groupErrors) > 0 {
 				resultTable.RawSetString("error", lua.LString(groupErrors[0].Error()))
+			}
+			// Find the output of the last task to run
+			if len(executionOrder) > 0 {
+				lastTaskName := executionOrder[len(executionOrder)-1]
+				if output, ok := taskOutputs[lastTaskName]; ok {
+					resultTable.RawSetString("output", output)
+				}
 			}
 
 			success, _, _, err := luainterface.ExecuteLuaFunction(L, group.CleanWorkdirAfterRunFunc, nil, resultTable, 1, context.Background())
@@ -609,7 +623,7 @@ func (tr *TaskRunner) RunTasksParallel(tasks []*types.Task, input *lua.LTable) (
 
 			var taskMu sync.Mutex
 
-			err := tr.executeTaskWithRetries(t, input, &taskMu, completed, outputs, running, nil)
+			err := tr.executeTaskWithRetries(t, input, &taskMu, completed, outputs, running, nil, "")
 
 			mu.Lock()
 			var result types.TaskResult
