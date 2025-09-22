@@ -8,12 +8,19 @@ Here you will find detailed guides, API references, and practical examples to he
 
 *   [Getting Started](./getting-started.md)
 *   [Core Concepts](./core-concepts.md)
+*   [CLI Commands](./CLI.md)
 *   **Built-in Modules:**
-    *   [Git Module](./modules/git.md)
-    *   [Pulumi Module](./modules/pulumi.md)
-    *   [Salt Module](./modules/salt.md)
+    *   [Data Module](./modules/data.md)
+    *   [Exec Module](./modules/exec.md)
+    *   [FS Module](./modules/fs.md)
     *   [GCP Module](./modules/gcp.md)
+    *   [Git Module](./modules/git.md)
+    *   [Log Module](./modules/log.md)
+    *   [Net Module](./modules/net.md)
     *   [Notifications Module](./modules/notifications.md)
+    *   [Pulumi Module](./modules/pulumi.md)
+    *   [Python Module](./modules/python.md)
+    *   [Salt Module](./modules/salt.md)
 *   [Advanced Examples](./advanced-examples.md)
 
 ---

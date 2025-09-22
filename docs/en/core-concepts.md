@@ -1,126 +1,166 @@
 # Core Concepts
 
-This document explains the fundamental concepts of Sloth-Runner, helping you understand how tasks are defined and executed.
+This document explains the fundamental concepts of `sloth-runner`, helping you understand how to define and orchestrate complex workflows.
 
-## Defining Tasks in Lua
+---
 
-Tasks in Sloth-Runner are defined in Lua files, typically within a global table called `TaskDefinitions`. This table is a map where keys are task group names and values are group tables.
+## The `TaskDefinitions` Table
 
-### Task Group Structure
+The entry point for any `sloth-runner` workflow is a Lua file that returns a global table named `TaskDefinitions`. This table is a dictionary where each key is a **Task Group** name.
 
-Each task group has:
-*   `description`: A textual description of the group.
-*   `tasks`: A table containing individual task definitions.
+```lua
+-- my_pipeline.lua
+TaskDefinitions = {
+  -- Task Groups are defined here
+}
+```
 
-### Individual Task Structure
+---
 
-Each individual task can have the following fields:
+## Task Groups
+
+A Task Group is a collection of related tasks. It can also define properties that affect all tasks within it.
+
+**Group Properties:**
+
+*   `description` (string): A description of what the group does.
+*   `tasks` (table): A list of individual task tables.
+*   `create_workdir_before_run` (boolean): If `true`, a temporary working directory is created for the group before any task runs. This directory is passed to each task.
+*   `clean_workdir_after_run` (function): A Lua function that decides if the temporary workdir should be deleted after the group finishes. It receives the final result of the group (`{success = true/false, ...}`). Returning `true` deletes the directory.
+
+**Example:**
+```lua
+TaskDefinitions = {
+  my_group = {
+    description = "A group that manages its own temporary directory.",
+    create_workdir_before_run = true,
+    clean_workdir_after_run = function(result)
+      if not result.success then
+        log.warn("Group failed. Workdir will be kept for debugging.")
+      end
+      return result.success -- Only clean up if everything succeeded
+    end,
+    tasks = {
+      -- Tasks go here
+    }
+  }
+}
+```
+
+---
+
+## Individual Tasks
+
+A task is a single unit of work. It's defined as a table with several available properties to control its behavior.
+
+### Basic Properties
 
 *   `name` (string): The unique name of the task within its group.
 *   `description` (string): A brief description of what the task does.
-*   `command` (string or Lua function):
-    *   If a `string`, it will be executed as a shell command.
-    *   If a `Lua function`, this function will be executed. It can receive `params` (task parameters) and `deps` (outputs from dependent tasks). The function should return `true` for success, `false` for failure, and optionally a message and an outputs table.
-*   `async` (boolean, optional): If `true`, the task will be executed asynchronously. Default is `false`.
-*   `pre_exec` (Lua function, optional): A Lua function to be executed before the task's main `command`.
-*   `post_exec` (Lua function, optional): A Lua function to be executed after the task's main `command`.
-*   `depends_on` (string or table of strings, optional): Names of tasks that must complete successfully before this task can run.
-*   `retries` (number, optional): The number of times the task will be retried if it fails. Default is `0`.
-*   `timeout` (string, optional): A duration (e.g., "10s", "1m") after which the task will be terminated if still running.
-*   `run_if` (string or Lua function, optional): The task will only be executed if this condition is true. Can be a shell command (exit code 0 for success) or a Lua function (returns `true` for success).
-*   `abort_if` (string or Lua function, optional): If this condition is true, the entire workflow execution will be aborted. Can be a shell command (exit code 0 for success) or a Lua function (returns `true` for success).
-*   `next_if_fail` (string or table of strings, optional): Names of tasks to be executed if this task fails.
+*   `command` (string or function): The core action of the task.
+    *   **As a string:** It's executed as a shell command.
+    *   **As a function:** The Lua function is executed. It receives two arguments: `params` (a table of its parameters) and `deps` (a table containing the outputs of its dependencies). The function must return:
+        1.  `boolean`: `true` for success, `false` for failure.
+        2.  `string`: A message describing the result.
+        3.  `table` (optional): A table of outputs that other tasks can depend on.
 
-### Example `TaskDefinitions` Structure
+### Dependency and Execution Flow
 
+*   `depends_on` (string or table): A list of task names that must complete successfully before this task can run.
+*   `next_if_fail` (string or table): A list of task names to run *only if* this task fails. This is useful for cleanup or notification tasks.
+*   `async` (boolean): If `true`, the task runs in the background, and the runner does not wait for it to complete before starting the next task in the execution order.
+
+### Error Handling and Robustness
+
+*   `retries` (number): The number of times to retry a task if it fails. Default is `0`.
+*   `timeout` (string): A duration (e.g., `"10s"`, `"1m"`) after which the task will be terminated if it's still running.
+
+### Conditional Execution
+
+*   `run_if` (string or function): The task will be skipped unless this condition is met.
+    *   **As a string:** A shell command. An exit code of `0` means the condition is met.
+    *   **As a function:** A Lua function that returns `true` if the task should run.
+*   `abort_if` (string or function): The entire workflow will be aborted if this condition is met.
+    *   **As a string:** A shell command. An exit code of `0` means abort.
+    *   **As a function:** A Lua function that returns `true` to abort.
+
+### Lifecycle Hooks
+
+*   `pre_exec` (function): A Lua function that runs *before* the main `command`.
+*   `post_exec` (function): A Lua function that runs *after* the main `command` has completed successfully.
+
+### Reusability
+
+*   `uses` (table): Specifies a pre-defined task from another file (loaded via `import`) to use as a base. The current task definition can then override properties like `params` or `description`.
+*   `params` (table): A dictionary of key-value pairs that can be passed to the task's `command` function.
+
+---
+
+## Global Functions
+
+`sloth-runner` provides global functions in the Lua environment to help orchestrate workflows.
+
+### `import(path)`
+
+Loads another Lua file and returns the value it returns. This is the primary mechanism for creating reusable task modules. The path is relative to the file calling `import`.
+
+**Example (`reusable_tasks.lua`):**
 ```lua
+-- Import a module that returns a table of task definitions
+local docker_tasks = import("shared/docker.lua")
+
 TaskDefinitions = {
-    my_first_group = {
-        description = "An example task group.",
-        tasks = {
-            my_first_task = {
-                name = "my_first_task",
-                description = "A simple task that executes a shell command.",
-                command = "echo 'Hello from Sloth-Runner!'"
-            },
-            my_second_task = {
-                name = "my_second_task",
-                description = "A task that depends on the first and uses a Lua function.",
-                depends_on = "my_first_task",
-                command = function(params, deps)
-                    log.info("Executing the second task.")
-                    -- You can access outputs from previous tasks via 'deps'
-                    -- local output_from_first = deps.my_first_task.some_output
-                    return true, "echo 'Second task completed!'"
-                end
-            }
-        }
+  main = {
+    tasks = {
+      {
+        -- Use the 'build' task from the imported module
+        uses = docker_tasks.build,
+        params = { image_name = "my-app" }
+      }
     }
+  }
 }
 ```
 
-## Parameters and Outputs
+### `parallel(tasks)`
 
-*   **Parameters (`params`):** Can be passed to tasks via the command line or defined within the task itself. The `command` function and `run_if`/`abort_if` functions can access them.
-*   **Outputs (`deps`):** Lua `command` functions can return an outputs table. Tasks that depend on this task can access these outputs through the `deps` argument.
+Executes a list of tasks concurrently and waits for all of them to complete.
 
-## Exporting Data to the CLI
-
-In addition to task outputs, `sloth-runner` provides a global `export()` function that allows you to pass data from within a script directly to the command-line output.
-
-### `export(table)`
-
-*   **`table`**: A Lua table whose key-value pairs will be exported.
-
-When you run a task with the `--return` flag, the data passed to the `export()` function will be merged with the final task's output and printed as a single JSON object. If there are duplicate keys, the value from the `export()` function will take precedence.
-
-This is useful for extracting important information from any point in your script, not just from the return value of the last task.
+*   `tasks` (table): A list of task tables to run in parallel.
 
 **Example:**
-
 ```lua
-command = function(params, deps)
-  -- Task logic...
-  local some_data = {
-    info = "This is important data",
-    timestamp = os.time()
-  }
-  
-  -- Export the table
-  export(some_data)
-  
-  -- The task can continue and return its own output
-  return true, "Task completed", { status = "ok" }
+command = function()
+  log.info("Starting 3 tasks in parallel...")
+  local results, err = parallel({
+    { name = "short_task", command = "sleep 1" },
+    { name = "medium_task", command = "sleep 2" },
+    { name = "long_task", command = "sleep 3" }
+  })
+  if err then
+    return false, "Parallel execution failed"
+  end
+  return true, "All parallel tasks finished."
 end
 ```
 
-Running with `--return` would result in a JSON output like:
+### `export(table)`
+
+Exports data from any point in a script to the CLI. When the `--return` flag is used, all exported tables are merged with the final task's output into a single JSON object.
+
+*   `table`: A Lua table to be exported.
+
+**Example:**
+```lua
+command = function()
+  export({ important_value = "data from the middle of a task" })
+  return true, "Task done", { final_output = "some result" }
+end
+```
+Running with `--return` would produce:
 ```json
 {
-  "info": "This is important data",
-  "timestamp": 1678886400,
-  "status": "ok"
+  "important_value": "data from the middle of a task",
+  "final_output": "some result"
 }
 ```
-
-## Built-in Modules
-
-Sloth-Runner exposes various Go functionalities as Lua modules, allowing your tasks to interact with the system and external services. In addition to the basic modules (`exec`, `fs`, `net`, `data`, `log`, `import`, `parallel`), Sloth-Runner now includes advanced modules for Git, Pulumi, and Salt.
-
-These modules offer a fluent and intuitive API for complex automation.
-
-*   **`exec` module:** For executing arbitrary shell commands.
-*   **`fs` module:** For file system operations (read, write, etc.).
-*   **`net` module:** For making HTTP requests and downloads.
-*   **`data` module:** For parsing and serializing JSON and YAML.
-*   **`log` module:** For logging messages to the Sloth-Runner console.
-*   **`import` function:** For importing other Lua files and reusing tasks.
-*   **`parallel` function:** For executing tasks in parallel.
-*   **`git` module:** For interacting with Git repositories.
-*   **`pulumi` module:** For orchestrating Pulumi stacks.
-*   **`salt` module:** For executing SaltStack commands.
-
-For details on each module, please refer to their respective sections in the documentation.
-
----
-[English](./core-concepts.md) | [Português](../pt/core-concepts.md) | [中文](../zh/core-concepts.md)
