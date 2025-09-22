@@ -140,16 +140,12 @@ func runPulumiCommand(L *lua.LState, command string) int {
 
 	cmd := setupPulumiCmd(stack, pulumiArgs...)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
 	success := err == nil
 
 	result := L.NewTable()
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
+	result.RawSetString("stdout", lua.LString(output))
+	result.RawSetString("stderr", lua.LString("")) // Stderr is now in stdout
 	result.RawSetString("success", lua.LBool(success))
 	L.Push(result)
 	return 1
