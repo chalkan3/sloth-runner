@@ -19,10 +19,24 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
+	"github.com/chalkan3/sloth-runner/internal/repl"
 	"github.com/chalkan3/sloth-runner/internal/taskrunner"
 	"github.com/chalkan3/sloth-runner/internal/types"
 	lua "github.com/yuin/gopher-lua"
 )
+
+var replCmd = &cobra.Command{
+	Use:   "repl",
+	Short: "Starts an interactive REPL session",
+	Long: `The repl command starts an interactive Read-Eval-Print Loop that allows you
+to execute Lua code and interact with all the built-in sloth-runner modules.
+You can optionally load a workflow file to have its context available.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		workflowFile, _ := cmd.Flags().GetString("file")
+		repl.Start(workflowFile)
+		return nil
+	},
+}
 
 // --- Start: Centralized Template Definitions ---
 
@@ -711,6 +725,7 @@ func init() {
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(replCmd)
 	checkCmd.AddCommand(dependenciesCmd)
 
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
@@ -739,6 +754,7 @@ func init() {
 	testCmd.Flags().StringP("workflow", "w", "", "Path to the Lua workflow file to be tested (required)")
 	testCmd.MarkFlagRequired("file")
 	testCmd.MarkFlagRequired("workflow")
+	replCmd.Flags().StringP("file", "f", "", "Path to a Lua workflow file to load into the REPL session")
 }
 
 func main() {
