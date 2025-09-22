@@ -34,7 +34,19 @@ pulumi:
           - name: "subnet-b"
             cidr: "10.0.2.0/24"
             region: "us-central1"
-      gcp-hub-spoke:spoke-vpcs: []
+      gcp-hub-spoke:spoke-vpcs:
+        - name: "spoke-dev"
+          cidr: "192.168.10.0/24"
+          subnets:
+            - name: "dev-subnet-apps"
+              cidr: "192.168.10.0/26"
+              region: "us-central1"
+        - name: "spoke-prod"
+          cidr: "192.168.20.0/24"
+          subnets:
+            - name: "prod-subnet-apps"
+              cidr: "192.168.20.0/25"
+              region: "us-east1"
   spoke:
     stack_name: "spoke-dev"
     config:

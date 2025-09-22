@@ -1,79 +1,47 @@
-TaskDefinitions = {
-  ["gcp-host-destroy"] = {
-    description = "Destroys the gcp-hosts project infrastructure.",
-    workdir = '/tmp/gcp-host-deployment', 
-    execution_mode = "shared_session",
-    clean_workdir_after_run = function(params, r) 
-      log.info("Checking if workdir should be cleaned. Success: " .. tostring(r.success))
-      return r.success 
-    end,
+-- examples/gcp_host_destroy_pipeline.lua
+--
+-- This pipeline destroys the GCP Hub and Spoke infrastructure.
 
+TaskDefinitions = {
+  gcp_deployment_destroy = {
+    description = "Destroys the GCP Hub and Spoke architecture.",
     tasks = {
       {
-        name = "clone_repository",
-        command = function(params, inputs, session)
-          log.info("Ensuring repository files are present...")
-          local fs = require("fs")
-          if fs.exists(session.workdir .. "/.git") then
-            log.info("Repository already exists, skipping clone.")
-            return true, "Repository already exists."
-          end
+        name = "destroy_gcp_stacks",
+        command = function()
+          log.info("Destroying GCP Spoke Host...")
 
-          log.info("Cloning repository to get Pulumi project files...")
-          local git = require("git")
-          local result = git.clone("https://github.com/chalkan3/gcp-hosts.git", session.workdir)
-          if not result.success then
-            log.error("Failed to clone repository: " .. result.stderr)
-            return false, "Failed to clone repository: " .. result.stderr
-          end
-          log.info("Repository cloned successfully.")
-          return true, "Repository cloned successfully."
-        end
-      },
-      {
-        name = "setup_python_env",
-        description = "Creates a virtual environment and installs all dependencies.",
-        depends_on = "clone_repository",
-        command = function(params, inputs, session)
-          log.info("Setting up Python environment for destroy...")
-          local py = require("python")
-          local venv_path = session.workdir .. "/.venv"
-          local venv = py.venv(venv_path)
-          
-          venv:create()
-          
-          log.info("Installing dependencies...")
-          local pip_result = venv:pip("install -r " .. session.workdir .. "/requirements.txt")
-          if not pip_result.success then
-            log.error("Failed to install python dependencies: " .. pip_result.stderr)
-            return false, "Failed to install python dependencies: " .. pip_result.stderr
-          end
-
-          log.info("Python environment is ready.")
-          return true, "Python environment created.", { venv_path = venv_path }
-        end
-      },
-      {
-        name = "destroy_stack",
-        description = "Destroys the Pulumi stack.",
-        depends_on = "setup_python_env",
-        command = function(params, inputs, session)
-          log.info("Destroying Pulumi stack...")
-          local pulumi = require("pulumi")
-          local stack = pulumi.stack("organization/gcp-host/prod", { 
-            workdir = session.workdir, 
-            venv_path = inputs.setup_python_env.venv_path,
-            login_url = 'gs://pulumi-state-backend-chalkan3' 
+          local spoke_stack = pulumi.stack(values.pulumi.spoke.stack_name, {
+            workdir = values.repos.spoke.path,
+            login = values.pulumi.login_url,
+            venv_path = values.paths.spoke_venv
           })
-          
-          local result = stack:destroy({ yes = true })
-          if not result.success then
-            local error_message = "Failed to destroy pulumi stack: " .. result.stderr
-            log.error(error_message)
-            return false, error_message
+
+          local spoke_result = spoke_stack:destroy({ yes = true })
+          if not spoke_result.success then
+            log.error("Spoke stack destruction failed: " .. spoke_result.stdout)
+            -- We continue to the hub destruction even if the spoke fails
+          else
+            log.info("Spoke stack destroyed successfully.")
           end
-          log.info("Pulumi stack destroyed successfully.")
-          return true, "Pulumi stack destroyed."
+
+          log.info("Destroying GCP Hub Network...")
+
+          local hub_stack = pulumi.stack(values.pulumi.hub.stack_name, {
+            workdir = values.repos.hub.path,
+            login = values.pulumi.login_url
+          })
+
+          local hub_result = hub_stack:destroy({ yes = true })
+          if not hub_result.success then
+            log.error("Hub stack destruction failed: " .. hub_result.stdout)
+            return false, "Hub stack destruction failed."
+          end
+
+          log.info("Hub stack destroyed successfully.")
+          log.info("GCP Hub and Spoke destruction completed successfully!")
+
+          return true, "Destruction successful"
         end
       }
     }
