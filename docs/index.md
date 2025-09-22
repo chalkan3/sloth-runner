@@ -13,4 +13,5 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
     *   [Módulo Pulumi](./modules/pulumi.md)
     *   [Módulo Salt](./modules/salt.md)
     *   [Módulo GCP](./modules/gcp.md)
+    *   [Módulo de Notificações](./modules/notifications.md)
 *   [Exemplos Avançados](./advanced-examples.md)

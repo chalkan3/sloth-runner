@@ -13,3 +13,12 @@ list_of_items:
   - item1
   - item2
   - item3
+
+# Notifications configuration for Slack and ntfy
+# Add your Slack Incoming Webhook URL and ntfy topic here.
+notifications:
+  slack:
+    webhook_url: ""
+  ntfy:
+    server: "https://ntfy.sh"
+    topic: ""

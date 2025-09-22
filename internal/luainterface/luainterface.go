@@ -601,6 +601,15 @@ func OpenAll(L *lua.LState) {
 	OpenGit(L)
 	OpenGCP(L)
 	OpenPython(L)
+	OpenNotifications(L)
+}
+
+func OpenNotifications(L *lua.LState) {
+	mod := NewNotificationsModule()
+	L.PreloadModule("notifications", mod.Loader)
+	if err := L.DoString(`notifications = require("notifications")`); err != nil {
+		panic(err)
+	}
 }
 
 // --- Parallel Module ---

@@ -13,6 +13,7 @@
     *   [Pulumi 模块](./modules/pulumi.md)
     *   [Salt 模块](./modules/salt.md)
     *   [GCP 模块](./modules/gcp.md)
+    *   [通知模块](./modules/notifications.md)
 *   [高级示例](./advanced-examples.md)
 
 ---

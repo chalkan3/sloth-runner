@@ -13,6 +13,7 @@ Here you will find detailed guides, API references, and practical examples to he
     *   [Pulumi Module](./modules/pulumi.md)
     *   [Salt Module](./modules/salt.md)
     *   [GCP Module](./modules/gcp.md)
+    *   [Notifications Module](./modules/notifications.md)
 *   [Advanced Examples](./advanced-examples.md)
 
 ---
