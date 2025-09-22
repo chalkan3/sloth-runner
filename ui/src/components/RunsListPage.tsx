@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Typography, CircularProgress } from '@mui/material';
 import { Link } from 'react-router-dom';
 
 // A simple type definition for a pipeline run
@@ -8,15 +8,11 @@ interface PipelineRun {
   group_name: string;
   status: 'success' | 'failed' | 'running';
   start_time: string;
-  end_time: string | null;
+  end_time: {
+    Time: string;
+    Valid: boolean;
+  } | null;
 }
-
-// TODO: Replace with a real API call
-const mockRuns: PipelineRun[] = [
-  { id: 1, group_name: 'docker-build-pipeline', status: 'success', start_time: '2025-09-21T21:50:42Z', end_time: '2025-09-21T21:51:05Z' },
-  { id: 2, group_name: 'terraform-lifecycle', status: 'failed', start_time: '2025-09-21T22:02:38Z', end_time: '2025-09-21T22:03:00Z' },
-  { id: 3, group_name: 'ci-pipeline', status: 'running', start_time: '2025-09-21T22:10:00Z', end_time: null },
-];
 
 const StatusChip = ({ status }: { status: PipelineRun['status'] }) => {
   let color: 'success' | 'error' | 'info' = 'info';
@@ -31,17 +27,39 @@ const StatusChip = ({ status }: { status: PipelineRun['status'] }) => {
 
 export default function RunsListPage() {
   const [runs, setRuns] = useState<PipelineRun[]>([]);
-  // const [error, setError] = useState<string | null>(null); // Keep for future API call error handling
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // In the future, we'll fetch from /api/runs
-    // For now, we use mock data.
-    setRuns(mockRuns);
+    const fetchRuns = async () => {
+      try {
+        const response = await fetch('/api/runs');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setRuns(data || []);
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e.message);
+        } else {
+          setError('An unknown error occurred');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRuns();
   }, []);
 
-  // if (error) {
-  //   return <Typography color="error">Failed to load runs: {error}</Typography>;
-  // }
+  if (loading) {
+    return <CircularProgress />;
+  }
+
+  if (error) {
+    return <Typography color="error">Failed to load runs: {error}</Typography>;
+  }
 
   return (
     <TableContainer component={Paper}>
@@ -70,7 +88,7 @@ export default function RunsListPage() {
               <TableCell><StatusChip status={run.status} /></TableCell>
               <TableCell>{new Date(run.start_time).toLocaleString()}</TableCell>
               <TableCell>
-                {run.end_time ? `${((new Date(run.end_time).getTime() - new Date(run.start_time).getTime()) / 1000).toFixed(2)}s` : '-'}
+                {run.end_time && run.end_time.Valid ? `${((new Date(run.end_time.Time).getTime() - new Date(run.start_time).getTime()) / 1000).toFixed(2)}s` : '-'}
               </TableCell>
             </TableRow>
           ))}
