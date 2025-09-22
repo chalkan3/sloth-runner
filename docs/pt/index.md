@@ -10,6 +10,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Conceitos Essenciais](./core-concepts.md)
 *   [Comandos da CLI](./CLI.md)
 *   **Módulos Built-in:**
+    *   [Módulo AWS](./modules/aws.md)
     *   [Módulo Data](./modules/data.md)
     *   [Módulo Exec](./modules/exec.md)
     *   [Módulo FS](./modules/fs.md)

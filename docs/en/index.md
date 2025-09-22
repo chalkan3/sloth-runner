@@ -10,6 +10,7 @@ Here you will find detailed guides, API references, and practical examples to he
 *   [Core Concepts](./core-concepts.md)
 *   [CLI Commands](./CLI.md)
 *   **Built-in Modules:**
+    *   [AWS Module](./modules/aws.md)
     *   [Data Module](./modules/data.md)
     *   [Exec Module](./modules/exec.md)
     *   [FS Module](./modules/fs.md)

@@ -10,6 +10,7 @@
 *   [核心概念](./core-concepts.md)
 *   [CLI 命令](./CLI.md)
 *   **内置模块：**
+    *   [AWS 模块](./modules/aws.md)
     *   [Data 模块](./modules/data.md)
     *   [Exec 模块](./modules/exec.md)
     *   [FS 模块](./modules/fs.md)

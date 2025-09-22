@@ -602,12 +602,21 @@ func OpenAll(L *lua.LState) {
 	OpenGCP(L)
 	OpenPython(L)
 	OpenNotifications(L)
+	OpenAWS(L)
 }
 
 func OpenNotifications(L *lua.LState) {
 	mod := NewNotificationsModule()
 	L.PreloadModule("notifications", mod.Loader)
 	if err := L.DoString(`notifications = require("notifications")`); err != nil {
+		panic(err)
+	}
+}
+
+func OpenAWS(L *lua.LState) {
+	mod := NewAWSModule()
+	L.PreloadModule("aws", mod.Loader)
+	if err := L.DoString(`aws = require("aws")`); err != nil {
 		panic(err)
 	}
 }

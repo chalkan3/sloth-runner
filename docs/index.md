@@ -9,6 +9,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Início Rápido](./getting-started.md)
 *   [Conceitos Essenciais](./core-concepts.md)
 *   **Módulos Built-in:**
+    *   [Módulo AWS](./modules/aws.md)
     *   [Módulo Git](./modules/git.md)
     *   [Módulo Pulumi](./modules/pulumi.md)
     *   [Módulo Salt](./modules/salt.md)
