@@ -14,10 +14,10 @@ import (
 
 // PipelineRun defines the structure for a single pipeline run history.
 type PipelineRun struct {
-	ID        int64     `json:"id"`
-	GroupName string    `json:"group_name"`
-	Status    string    `json:"status"`
-	StartTime time.Time `json:"start_time"`
+	ID        int64        `json:"id"`
+	GroupName string       `json:"group_name"`
+	Status    string       `json:"status"`
+	StartTime time.Time    `json:"start_time"`
 	EndTime   sql.NullTime `json:"end_time"`
 }
 
@@ -38,7 +38,6 @@ type RunDetails struct {
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// Allow all connections for simplicity. In production, you'd want to restrict this.
 		return true
 	},
 }
@@ -59,14 +58,7 @@ func StartServer(db *sql.DB) {
 	// WebSocket route
 	r.Get("/ws/runs/{id}", websocketHandler(db))
 
-	// Serve the embedded frontend
-	// content, err := fs.Sub(embeddedFiles, "ui/dist")
-	// if err != nil {
-	// 	log.Fatal("failed to get embedded fs subdirectory: ", err)
-	// }
-	// r.Handle("/*", http.FileServer(http.FS(content)))
-
-	log.Println("Starting Sloth-Runner UI on http://localhost:8080")
+	log.Println("Starting Sloth-Runner API server on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
@@ -100,7 +92,6 @@ func getRunDetailsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		// Fetch run details
 		var run PipelineRun
 		err := db.QueryRow("SELECT id, group_name, status, start_time, end_time FROM pipeline_runs WHERE id = ?", id).Scan(&run.ID, &run.GroupName, &run.Status, &run.StartTime, &run.EndTime)
 		if err != nil {
@@ -108,7 +99,6 @@ func getRunDetailsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Fetch logs
 		rows, err := db.Query("SELECT id, run_id, task_name, timestamp, message FROM task_logs WHERE run_id = ? ORDER BY timestamp ASC", id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -144,8 +134,6 @@ func websocketHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		defer conn.Close()
-
-		// TODO: Implement logic to stream logs for a specific run
 		log.Println("WebSocket connection established")
 	}
 }
