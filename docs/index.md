@@ -12,6 +12,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
     *   [Módulo AWS](./modules/aws.md)
     *   [Módulo Azure](./modules/azure.md)
     *   [Módulo DigitalOcean](./modules/digitalocean.md)
+    *   [Módulo Docker](./modules/docker.md)
     *   [Módulo Git](./modules/git.md)
     *   [Módulo Pulumi](./modules/pulumi.md)
     *   [Módulo Salt](./modules/salt.md)

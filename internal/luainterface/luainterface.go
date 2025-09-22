@@ -606,6 +606,15 @@ func OpenAll(L *lua.LState) {
 	OpenDigitalOcean(L)
 	OpenAzure(L)
 	OpenTerraform(L)
+	OpenDocker(L)
+}
+
+func OpenDocker(L *lua.LState) {
+	mod := NewDockerModule()
+	L.PreloadModule("docker", mod.Loader)
+	if err := L.DoString(`docker = require("docker")`); err != nil {
+		panic(err)
+	}
 }
 
 func OpenTerraform(L *lua.LState) {

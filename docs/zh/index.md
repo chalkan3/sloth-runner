@@ -14,6 +14,7 @@
     *   [Azure 模块](./modules/azure.md)
     *   [Data 模块](./modules/data.md)
     *   [DigitalOcean 模块](./modules/digitalocean.md)
+    *   [Docker 模块](./modules/docker.md)
     *   [Exec 模块](./modules/exec.md)
     *   [FS 模块](./modules/fs.md)
     *   [GCP 模块](./modules/gcp.md)

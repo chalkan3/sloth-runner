@@ -14,6 +14,7 @@ Here you will find detailed guides, API references, and practical examples to he
     *   [Azure Module](./modules/azure.md)
     *   [Data Module](./modules/data.md)
     *   [DigitalOcean Module](./modules/digitalocean.md)
+    *   [Docker Module](./modules/docker.md)
     *   [Exec Module](./modules/exec.md)
     *   [FS Module](./modules/fs.md)
     *   [GCP Module](./modules/gcp.md)
