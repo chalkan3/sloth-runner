@@ -2,7 +2,9 @@ package ui
 
 import (
 	"database/sql"
+	"embed"
 	"encoding/json"
+	"io/fs"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +13,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 )
+
+//go:embed all:../../ui/dist
+var embeddedFiles embed.FS
 
 // PipelineRun defines the structure for a single pipeline run history.
 type PipelineRun struct {
@@ -58,7 +63,14 @@ func StartServer(db *sql.DB) {
 	// WebSocket route
 	r.Get("/ws/runs/{id}", websocketHandler(db))
 
-	log.Println("Starting Sloth-Runner API server on http://localhost:8080")
+	// Serve the embedded frontend
+	uiContent, err := fs.Sub(embeddedFiles, "ui/dist")
+	if err != nil {
+		log.Fatal("failed to get embedded fs subdirectory: ", err)
+	}
+	r.Handle("/*", http.FileServer(http.FS(uiContent)))
+
+	log.Println("Starting Sloth-Runner UI on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

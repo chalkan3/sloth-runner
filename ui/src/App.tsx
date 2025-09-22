@@ -10,8 +10,7 @@ import '@fontsource/roboto/500.css';
 import '@fontsource/roboto/700.css';
 
 import RunsListPage from './components/RunsListPage';
-// Placeholder for the details page
-const RunDetailsPage = () => <Typography>Run Details Page (TODO)</Typography>;
+import RunDetailsPage from './components/RunDetailsPage';
 
 const darkTheme = createTheme({
   palette: {
