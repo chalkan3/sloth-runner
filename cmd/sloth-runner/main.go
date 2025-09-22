@@ -617,6 +617,7 @@ Inside the test file, you can use the 'test' and 'assert' modules to validate ta
 		// Setup the testing environment
 		testState := &luainterface.TestState{}
 		luainterface.OpenTesting(L, testState, taskGroups)
+		luainterface.OverwriteModulesWithMocks(L, testState)
 
 		// Execute the test file
 		testFileContent, err := ioutil.ReadFile(testFilePath)

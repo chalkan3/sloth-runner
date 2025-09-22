@@ -44,48 +44,15 @@ The `assert` module provides functions to check the results of your task executi
 -   `assert.is_true(value, message)`: Checks if the `value` is true.
 -   `assert.equals(actual, expected, message)`: Checks if the `actual` value is equal to the `expected` value.
 
-### Example
-
-Here is a complete example of a test file (`examples/basic_pipeline_test.lua`) that tests the `examples/basic_pipeline.lua` workflow.
-
-```lua
--- examples/basic_pipeline_test.lua
-
-test.describe("Basic Pipeline Tests", function()
-  test.it(function()
-    local result = test.run_task("fetch_data")
-    assert.is_true(result.success, "fetch_data should run successfully")
-  end)
-
-  test.it(function()
-    local result = test.run_task("process_data")
-    assert.is_true(result.success, "process_data task should succeed")
-    
-    -- Note: This test is simplified. In a real scenario, you might want to
-    -- mock the input from the 'fetch_data' dependency.
-    local expected_output = "processed_some_data_from_api"
-    local actual_output = result.output and result.output.final_data
-    
-    assert.equals(actual_output, expected_output, "process_data should produce the correct output")
-  end)
-
-  test.it(function()
-    assert.equals("hello", "world", "this assertion is designed to fail")
-  end)
-end)
-```
-
-When you run this test, you will get a clear report in your terminal indicating which assertions passed and which failed, along with a final summary.
-
-## Mocking Modules
+### Mocking Modules
 
 To test the logic of your pipelines without making real external calls (e.g., to AWS, Docker, or Terraform), the testing framework includes a powerful mocking feature.
 
-### Strict Mocking Policy
+#### Strict Mocking Policy
 
 The test runner enforces a **strict mocking policy**. When running in test mode, any call to a module function (like `aws.exec` or `docker.build`) that has **not** been explicitly mocked will cause the test to fail immediately. This ensures that your tests are fully self-contained, deterministic, and do not have unintended side effects.
 
-### `test.mock(function_name, mock_definition)`
+#### `test.mock(function_name, mock_definition)`
 
 This function allows you to define a fake return value for any mockable module function.
 

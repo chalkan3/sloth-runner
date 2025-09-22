@@ -19,7 +19,8 @@ type TestState struct {
 	Assertions int
 	Failed     int
 	CurrentSuite string
-	Results    []pterm.LeveledListItem
+	Results      []pterm.LeveledListItem
+	Mocks        map[string]*lua.LTable
 }
 
 // --- assert module ---
@@ -81,6 +82,16 @@ func newAssertModule(ts *TestState) lua.LGFunction {
 func newTestModule(ts *TestState, taskGroups map[string]types.TaskGroup) lua.LGFunction {
 	return func(L *lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			// test.mock(function_name, return_value)
+			"mock": func(L *lua.LState) int {
+				funcName := L.CheckString(1)
+				returnValue := L.CheckTable(2)
+				if ts.Mocks == nil {
+					ts.Mocks = make(map[string]*lua.LTable)
+				}
+				ts.Mocks[funcName] = returnValue
+				return 0
+			},
 			// test.describe(name, function)
 			"describe": func(L *lua.LState) int {
 				suiteName := L.CheckString(1)
