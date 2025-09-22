@@ -12,8 +12,12 @@ import (
 const (
 	luaGCPClientTypeName         = "gcp_client"
 	luaGCPServiceAccountTypeName = "gcp_service_account"
-	luaGCPComputeTypeName        = "gcp_compute"
 	luaGCPInstancesTypeName      = "gcp_instances"
+	luaGCPBucketsTypeName        = "gcp_buckets"
+	luaGCPSqlTypeName            = "gcp_sql"
+	luaGCPSqlInstancesTypeName   = "gcp_sql_instances"
+	luaGCPGkeTypeName            = "gcp_gke"
+	luaGCPGkeClustersTypeName    = "gcp_gke_clusters"
 )
 
 // GCPClient represents a client for GCP operations.
@@ -38,6 +42,36 @@ type GCPCompute struct {
 // GCPInstances represents the instances service client.
 type GCPInstances struct {
 	Compute *GCPCompute
+}
+
+// GCPStorage represents the storage service client.
+type GCPStorage struct {
+	Client *GCPClient
+}
+
+// GCPBuckets represents the buckets service client.
+type GCPBuckets struct {
+	Storage *GCPStorage
+}
+
+// GCPSql represents the sql service client.
+type GCPSql struct {
+	Client *GCPClient
+}
+
+// GCPSqlInstances represents the sql instances service client.
+type GCPSqlInstances struct {
+	Sql *GCPSql
+}
+
+// GCPGke represents the gke service client.
+type GCPGke struct {
+	Client *GCPClient
+}
+
+// GCPGkeClusters represents the gke clusters service client.
+type GCPGkeClusters struct {
+	Gke *GCPGke
 }
 
 // --- Constructors ---
@@ -90,6 +124,60 @@ func checkGCPInstances(L *lua.LState) *GCPInstances {
 		return v
 	}
 	L.ArgError(1, "gcp instances expected")
+	return nil
+}
+
+func checkGCPStorage(L *lua.LState) *GCPStorage {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPStorage); ok {
+		return v
+	}
+	L.ArgError(1, "gcp storage expected")
+	return nil
+}
+
+func checkGCPBuckets(L *lua.LState) *GCPBuckets {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPBuckets); ok {
+		return v
+	}
+	L.ArgError(1, "gcp buckets expected")
+	return nil
+}
+
+func checkGCPSql(L *lua.LState) *GCPSql {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPSql); ok {
+		return v
+	}
+	L.ArgError(1, "gcp sql expected")
+	return nil
+}
+
+func checkGCPSqlInstances(L *lua.LState) *GCPSqlInstances {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPSqlInstances); ok {
+		return v
+	}
+	L.ArgError(1, "gcp sql instances expected")
+	return nil
+}
+
+func checkGCPGke(L *lua.LState) *GCPGke {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPGke); ok {
+		return v
+	}
+	L.ArgError(1, "gcp gke expected")
+	return nil
+}
+
+func checkGCPGkeClusters(L *lua.LState) *GCPGkeClusters {
+	ud := L.CheckUserData(1)
+	if v, ok := ud.Value.(*GCPGkeClusters); ok {
+		return v
+	}
+	L.ArgError(1, "gcp gke clusters expected")
 	return nil
 }
 
@@ -155,6 +243,42 @@ func (c *GCPClient) compute(L *lua.LState) int {
 	return 1
 }
 
+// client:storage() -> storage
+func (c *GCPClient) storage(L *lua.LState) int {
+	storage := &GCPStorage{
+		Client: c,
+	}
+	ud := L.NewUserData()
+	ud.Value = storage
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPStorageTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// client:sql() -> sql
+func (c *GCPClient) sql(L *lua.LState) int {
+	sql := &GCPSql{
+		Client: c,
+	}
+	ud := L.NewUserData()
+	ud.Value = sql
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPSqlTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// client:gke() -> gke
+func (c *GCPClient) gke(L *lua.LState) int {
+	gke := &GCPGke{
+		Client: c,
+	}
+	ud := L.NewUserData()
+	ud.Value = gke
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPGkeTypeName))
+	L.Push(ud)
+	return 1
+}
+
 // --- Compute Methods ---
 
 // compute:instances() -> instances
@@ -179,6 +303,96 @@ func (i *GCPInstances) list(L *lua.LState) int {
 	}
 
 	stdout, stderr, err := i.Compute.Client.runGCloudCommand(args...)
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(err == nil))
+	result.RawSetString("stdout", lua.LString(stdout))
+	result.RawSetString("stderr", lua.LString(stderr))
+	L.Push(result)
+	return 1
+}
+
+// --- Storage Methods ---
+
+// storage:buckets() -> buckets
+func (s *GCPStorage) buckets(L *lua.LState) int {
+	buckets := &GCPBuckets{
+		Storage: s,
+	}
+	ud := L.NewUserData()
+	ud.Value = buckets
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPBucketsTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// --- Buckets Methods ---
+
+// buckets:list() -> { success, stdout, stderr }
+func (b *GCPBuckets) list(L *lua.LState) int {
+	args := []string{"storage", "buckets", "list", "--format=json"}
+
+	stdout, stderr, err := b.Storage.Client.runGCloudCommand(args...)
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(err == nil))
+	result.RawSetString("stdout", lua.LString(stdout))
+	result.RawSetString("stderr", lua.LString(stderr))
+	L.Push(result)
+	return 1
+}
+
+// --- Sql Methods ---
+
+// sql:instances() -> instances
+func (s *GCPSql) instances(L *lua.LState) int {
+	instances := &GCPSqlInstances{
+		Sql: s,
+	}
+	ud := L.NewUserData()
+	ud.Value = instances
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPSqlInstancesTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// --- Sql Instances Methods ---
+
+// instances:list() -> { success, stdout, stderr }
+func (i *GCPSqlInstances) list(L *lua.LState) int {
+	args := []string{"sql", "instances", "list", "--format=json"}
+
+	stdout, stderr, err := i.Sql.Client.runGCloudCommand(args...)
+
+	result := L.NewTable()
+	result.RawSetString("success", lua.LBool(err == nil))
+	result.RawSetString("stdout", lua.LString(stdout))
+	result.RawSetString("stderr", lua.LString(stderr))
+	L.Push(result)
+	return 1
+}
+
+// --- Gke Methods ---
+
+// gke:clusters() -> clusters
+func (g *GCPGke) clusters(L *lua.LState) int {
+	clusters := &GCPGkeClusters{
+		Gke: g,
+	}
+	ud := L.NewUserData()
+	ud.Value = clusters
+	L.SetMetatable(ud, L.GetTypeMetatable(luaGCPGkeClustersTypeName))
+	L.Push(ud)
+	return 1
+}
+
+// --- Gke Clusters Methods ---
+
+// clusters:list() -> { success, stdout, stderr }
+func (c *GCPGkeClusters) list(L *lua.LState) int {
+	args := []string{"container", "clusters", "list", "--format=json"}
+
+	stdout, stderr, err := c.Gke.Client.runGCloudCommand(args...)
 
 	result := L.NewTable()
 	result.RawSetString("success", lua.LBool(err == nil))
@@ -248,6 +462,18 @@ var gcpClientMethods = map[string]lua.LGFunction{
 		client := checkGCPClient(L)
 		return client.compute(L)
 	},
+	"storage": func(L *lua.LState) int {
+		client := checkGCPClient(L)
+		return client.storage(L)
+	},
+	"sql": func(L *lua.LState) int {
+		client := checkGCPClient(L)
+		return client.sql(L)
+	},
+	"gke": func(L *lua.LState) int {
+		client := checkGCPClient(L)
+		return client.gke(L)
+	},
 }
 
 var gcpServiceAccountMethods = map[string]lua.LGFunction{
@@ -275,6 +501,48 @@ var gcpInstancesMethods = map[string]lua.LGFunction{
 	},
 }
 
+var gcpStorageMethods = map[string]lua.LGFunction{
+	"buckets": func(L *lua.LState) int {
+		storage := checkGCPStorage(L)
+		return storage.buckets(L)
+	},
+}
+
+var gcpBucketsMethods = map[string]lua.LGFunction{
+	"list": func(L *lua.LState) int {
+		buckets := checkGCPBuckets(L)
+		return buckets.list(L)
+	},
+}
+
+var gcpSqlMethods = map[string]lua.LGFunction{
+	"instances": func(L *lua.LState) int {
+		sql := checkGCPSql(L)
+		return sql.instances(L)
+	},
+}
+
+var gcpSqlInstancesMethods = map[string]lua.LGFunction{
+	"list": func(L *lua.LState) int {
+		instances := checkGCPSqlInstances(L)
+		return instances.list(L)
+	},
+}
+
+var gcpGkeMethods = map[string]lua.LGFunction{
+	"clusters": func(L *lua.LState) int {
+		gke := checkGCPGke(L)
+		return gke.clusters(L)
+	},
+}
+
+var gcpGkeClustersMethods = map[string]lua.LGFunction{
+	"list": func(L *lua.LState) int {
+		clusters := checkGCPGkeClusters(L)
+		return clusters.list(L)
+	},
+}
+
 func GCPLoader(L *lua.LState) int {
 	// Register client type
 	clientMT := L.NewTypeMetatable(luaGCPClientTypeName)
@@ -291,6 +559,30 @@ func GCPLoader(L *lua.LState) int {
 	// Register instances type
 	instancesMT := L.NewTypeMetatable(luaGCPInstancesTypeName)
 	L.SetField(instancesMT, "__index", L.SetFuncs(L.NewTable(), gcpInstancesMethods))
+
+	// Register storage type
+	storageMT := L.NewTypeMetatable(luaGCPStorageTypeName)
+	L.SetField(storageMT, "__index", L.SetFuncs(L.NewTable(), gcpStorageMethods))
+
+	// Register buckets type
+	bucketsMT := L.NewTypeMetatable(luaGCPBucketsTypeName)
+	L.SetField(bucketsMT, "__index", L.SetFuncs(L.NewTable(), gcpBucketsMethods))
+
+	// Register sql type
+	sqlMT := L.NewTypeMetatable(luaGCPSqlTypeName)
+	L.SetField(sqlMT, "__index", L.SetFuncs(L.NewTable(), gcpSqlMethods))
+
+	// Register sql instances type
+	sqlInstancesMT := L.NewTypeMetatable(luaGCPSqlInstancesTypeName)
+	L.SetField(sqlInstancesMT, "__index", L.SetFuncs(L.NewTable(), gcpSqlInstancesMethods))
+
+	// Register gke type
+	gkeMT := L.NewTypeMetatable(luaGCPGkeTypeName)
+	L.SetField(gkeMT, "__index", L.SetFuncs(L.NewTable(), gcpGkeMethods))
+
+	// Register gke clusters type
+	gkeClustersMT := L.NewTypeMetatable(luaGCPGkeClustersTypeName)
+	L.SetField(gkeClustersMT, "__index", L.SetFuncs(L.NewTable(), gcpGkeClustersMethods))
 
 	// Register module
 	mod := L.NewTable()
