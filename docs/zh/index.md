@@ -12,6 +12,7 @@
 *   **内置模块：**
     *   [AWS 模块](./modules/aws.md)
     *   [Data 模块](./modules/data.md)
+    *   [DigitalOcean 模块](./modules/digitalocean.md)
     *   [Exec 模块](./modules/exec.md)
     *   [FS 模块](./modules/fs.md)
     *   [GCP 模块](./modules/gcp.md)

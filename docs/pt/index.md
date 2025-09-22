@@ -12,6 +12,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   **Módulos Built-in:**
     *   [Módulo AWS](./modules/aws.md)
     *   [Módulo Data](./modules/data.md)
+    *   [Módulo DigitalOcean](./modules/digitalocean.md)
     *   [Módulo Exec](./modules/exec.md)
     *   [Módulo FS](./modules/fs.md)
     *   [Módulo GCP](./modules/gcp.md)

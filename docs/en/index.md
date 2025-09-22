@@ -12,6 +12,7 @@ Here you will find detailed guides, API references, and practical examples to he
 *   **Built-in Modules:**
     *   [AWS Module](./modules/aws.md)
     *   [Data Module](./modules/data.md)
+    *   [DigitalOcean Module](./modules/digitalocean.md)
     *   [Exec Module](./modules/exec.md)
     *   [FS Module](./modules/fs.md)
     *   [GCP Module](./modules/gcp.md)

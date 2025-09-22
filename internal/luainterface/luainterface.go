@@ -603,6 +603,15 @@ func OpenAll(L *lua.LState) {
 	OpenPython(L)
 	OpenNotifications(L)
 	OpenAWS(L)
+	OpenDigitalOcean(L)
+}
+
+func OpenDigitalOcean(L *lua.LState) {
+	mod := NewDigitalOceanModule()
+	L.PreloadModule("digitalocean", mod.Loader)
+	if err := L.DoString(`digitalocean = require("digitalocean")`); err != nil {
+		panic(err)
+	}
 }
 
 func OpenNotifications(L *lua.LState) {
