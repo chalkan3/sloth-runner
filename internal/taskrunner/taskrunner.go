@@ -3,6 +3,7 @@ package taskrunner
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log/slog"
 	"os"
@@ -297,6 +298,12 @@ func (tr *TaskRunner) Run() error {
 			return fmt.Errorf("failed to create workdir %s: %w", workdir, err)
 		}
 
+		artifactsDir, err := ioutil.TempDir(os.TempDir(), groupName+"-artifacts-*")
+		if err != nil {
+			return fmt.Errorf("failed to create artifacts directory: %w", err)
+		}
+		defer os.RemoveAll(artifactsDir)
+
 		session := &types.SharedSession{
 			Workdir: workdir,
 		}
@@ -346,6 +353,24 @@ func (tr *TaskRunner) Run() error {
 				continue
 			}
 
+			// Consume artifacts
+			for _, artifactName := range task.Consumes {
+				srcPath := filepath.Join(artifactsDir, artifactName)
+				destPath := filepath.Join(workdir, artifactName)
+				if err := copyFile(srcPath, destPath); err != nil {
+					slog.Error("Failed to consume artifact", "task", task.Name, "artifact", artifactName, "error", err)
+					groupErrors = append(groupErrors, err)
+					taskStatus[task.Name] = "Failed"
+					skip = true
+					break
+				}
+				slog.Info("Consumed artifact", "task", task.Name, "artifact", artifactName)
+			}
+			if skip {
+				p.Increment()
+				continue
+			}
+
 			inputFromDependencies := tr.L.NewTable()
 			for _, depName := range task.DependsOn {
 				if output, ok := taskOutputs[depName]; ok {
@@ -359,6 +384,23 @@ func (tr *TaskRunner) Run() error {
 				taskStatus[task.Name] = "Failed"
 			} else {
 				taskStatus[task.Name] = "Success"
+
+				// Produce artifacts
+				for _, artifactPattern := range task.Artifacts {
+					matches, err := filepath.Glob(filepath.Join(workdir, artifactPattern))
+					if err != nil {
+						slog.Error("Invalid artifact pattern", "task", task.Name, "pattern", artifactPattern, "error", err)
+						continue
+					}
+					for _, match := range matches {
+						destPath := filepath.Join(artifactsDir, filepath.Base(match))
+						if err := copyFile(match, destPath); err != nil {
+							slog.Error("Failed to produce artifact", "task", task.Name, "artifact", match, "error", err)
+						} else {
+							slog.Info("Produced artifact", "task", task.Name, "artifact", filepath.Base(match))
+						}
+					}
+				}
 			}
 			p.Increment()
 		}
@@ -423,6 +465,26 @@ func (tr *TaskRunner) Run() error {
 		return fmt.Errorf("one or more task groups failed")
 	}
 	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 func (tr *TaskRunner) getExecutionOrder(tasksToRun []*types.Task) ([]string, error) {

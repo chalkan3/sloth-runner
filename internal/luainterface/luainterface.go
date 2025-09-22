@@ -848,6 +848,28 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		})
 	}
 
+	// Parse artifacts
+	var artifacts []string
+	luaArtifacts := taskTable.RawGetString("artifacts")
+	if luaArtifacts.Type() == lua.LTString {
+		artifacts = []string{luaArtifacts.String()}
+	} else if luaArtifacts.Type() == lua.LTTable {
+		luaArtifacts.(*lua.LTable).ForEach(func(_, v lua.LValue) {
+			artifacts = append(artifacts, v.String())
+		})
+	}
+
+	// Parse consumes
+	var consumes []string
+	luaConsumes := taskTable.RawGetString("consumes")
+	if luaConsumes.Type() == lua.LTString {
+		consumes = []string{luaConsumes.String()}
+	} else if luaConsumes.Type() == lua.LTTable {
+		luaConsumes.(*lua.LTable).ForEach(func(_, v lua.LValue) {
+			consumes = append(consumes, v.String())
+		})
+	}
+
 	// Parse next_if_fail
 	var nextIfFail []string
 	luaNextIfFail := taskTable.RawGetString("next_if_fail")
@@ -898,6 +920,8 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		CommandStr:  cmdStr,
 		Params:      params,
 		DependsOn:   dependsOn,
+		Artifacts:   artifacts,
+		Consumes:    consumes,
 		NextIfFail:  nextIfFail,
 		Retries:     retries,
 		Timeout:     timeout,

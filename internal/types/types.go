@@ -15,6 +15,8 @@ type Task struct {
 	CommandFunc *lua.LFunction
 	CommandStr  string
 	DependsOn   []string
+	Artifacts   []string
+	Consumes    []string
 	NextIfFail  []string
 	Params      map[string]string
 	Retries     int

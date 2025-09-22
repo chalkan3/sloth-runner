@@ -93,6 +93,57 @@ A task is a single unit of work. It's defined as a table with several available 
 
 *   `uses` (table): Specifies a pre-defined task from another file (loaded via `import`) to use as a base. The current task definition can then override properties like `params` or `description`.
 *   `params` (table): A dictionary of key-value pairs that can be passed to the task's `command` function.
+*   `artifacts` (string or table): A file pattern (glob) or a list of patterns specifying which files from the task's `workdir` should be saved as artifacts after a successful run.
+*   `consumes` (string or table): The name of an artifact (or a list of names) from a previous task that should be copied into this task's `workdir` before it runs.
+
+---
+
+## Artifact Management
+
+Sloth-Runner allows tasks to share files with each other through an artifact mechanism. One task can "produce" one or more files as artifacts, and subsequent tasks can "consume" those artifacts.
+
+This is useful for CI/CD pipelines where a build step might generate a binary (the artifact), which is then used by a testing or deployment step.
+
+### How It Works
+
+1.  **Producing Artifacts:** Add the `artifacts` key to your task definition. The value can be a single file pattern (e.g., `"report.txt"`) or a list (e.g., `{"*.log", "app.bin"}`). After the task runs successfully, the runner will find files in the task's `workdir` matching these patterns and copy them to a shared artifact storage for the pipeline.
+
+2.  **Consuming Artifacts:** Add the `consumes` key to another task's definition (which typically `depends_on` the producer task). The value should be the filename of the artifact you want to use (e.g., `"report.txt"`). Before this task runs, the runner will copy the named artifact from the shared storage into this task's `workdir`, making it available to the `command`.
+
+### Artifacts Example
+
+```lua
+TaskDefinitions = {
+  ["ci-pipeline"] = {
+    description = "Demonstrates the use of artifacts.",
+    create_workdir_before_run = true,
+    tasks = {
+      {
+        name = "build",
+        description = "Creates a binary and declares it as an artifact.",
+        command = "echo 'binary_content' > app.bin",
+        artifacts = {"app.bin"}
+      },
+      {
+        name = "test",
+        description = "Consumes the binary to run tests.",
+        depends_on = "build",
+        consumes = {"app.bin"},
+        command = function(params)
+          -- At this point, 'app.bin' exists in this task's workdir
+          local content, err = fs.read(params.workdir .. "/app.bin")
+          if content == "binary_content" then
+            log.info("Successfully consumed artifact!")
+            return true
+          else
+            return false, "Artifact content was incorrect!"
+          end
+        end
+      }
+    }
+  }
+}
+```
 
 ---
 

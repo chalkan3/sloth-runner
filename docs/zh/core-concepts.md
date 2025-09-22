@@ -93,6 +93,57 @@ TaskDefinitions = {
 
 *   `uses` (table): 指定从另一个文件（通过 `import` 加载）的预定义任务作为基础。然后，当前任务定义可以覆盖 `params` 或 `description` 等属性。
 *   `params` (table): 可以传递给任务的 `command` 函数的键值对字典。
+*   `artifacts` (string 或 table): 一个文件模式 (glob) 或模式列表，指定成功运行后应将任务 `workdir` 中的哪些文件保存为工件。
+*   `consumes` (string 或 table): 前一个任务的工件名称（或名称列表），在运行此任务之前应将其复制到此任务的 `workdir` 中。
+
+---
+
+## 工件管理
+
+Sloth-Runner 允许任务通过工件机制相互共享文件。一个任务可以“生产”一个或多个文件作为工件，后续任务可以“消费”这些工件。
+
+这对于 CI/CD 管道非常有用，其中构建步骤可能会生成一个二进制文件（工件），然后由测试或部署步骤使用。
+
+### 工作原理
+
+1.  **生产工件:** 将 `artifacts` 键添加到您的任务定义中。该值可以是单个文件模式 (例如 `"report.txt"`) 或列表 (例如 `{"*.log", "app.bin"}`)。任务成功运行后，运行器将在任务的 `workdir` 中查找与这些模式匹配的文件，并将它们复制到管道的共享工件存储中。
+
+2.  **消费工件:** 将 `consumes` 键添加到另一个任务的定义中（通常 `depends_on` 生产者任务）。该值应该是您要使用的工件的文件名 (例如 `"report.txt"`)。在此任务运行之前，运行器会将指定的工件从共享存储复制到此任务的 `workdir` 中，使其可用于 `command`。
+
+### 工件示例
+
+```lua
+TaskDefinitions = {
+  ["ci-pipeline"] = {
+    description = "演示工件的使用。",
+    create_workdir_before_run = true,
+    tasks = {
+      {
+        name = "build",
+        description = "创建一个二进制文件并将其声明为工件。",
+        command = "echo 'binary_content' > app.bin",
+        artifacts = {"app.bin"}
+      },
+      {
+        name = "test",
+        description = "消费二进制文件以运行测试。",
+        depends_on = "build",
+        consumes = {"app.bin"},
+        command = function(params)
+          -- 此时, 'app.bin' 存在于此任务的 workdir 中
+          local content, err = fs.read(params.workdir .. "/app.bin")
+          if content == "binary_content" then
+            log.info("成功消费工件！")
+            return true
+          else
+            return false, "工件内容不正确！"
+          end
+        end
+      }
+    }
+  }
+}
+```
 
 ---
 

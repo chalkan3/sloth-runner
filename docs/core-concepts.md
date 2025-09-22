@@ -30,6 +30,55 @@ Cada tarefa individual pode ter os seguintes campos:
 *   `run_if` (string ou função Lua, opcional): A tarefa só será executada se esta condição for verdadeira. Pode ser um comando shell (código de saída 0 para sucesso) ou uma função Lua (retorna `true` para sucesso).
 *   `abort_if` (string ou função Lua, opcional): Se esta condição for verdadeira, toda a execução do workflow será abortada. Pode ser um comando shell (código de saída 0 para sucesso) ou uma função Lua (retorna `true` para sucesso).
 *   `next_if_fail` (string ou tabela de strings, opcional): Nomes de tarefas a serem executadas se esta tarefa falhar.
+*   `artifacts` (string ou tabela de strings, opcional): Um padrão de arquivo (glob) ou uma lista de padrões que especificam quais arquivos do `workdir` da tarefa devem ser salvos como artefatos após a execução bem-sucedida.
+*   `consumes` (string ou tabela de strings, opcional): O nome de um artefato (ou uma lista de nomes) de uma tarefa anterior que deve ser copiado para o `workdir` desta tarefa antes de sua execução.
+
+## Gerenciamento de Artefatos
+
+O Sloth-Runner permite que as tarefas compartilhem arquivos entre si através de um mecanismo de artefatos. Uma tarefa pode "produzir" um ou mais arquivos como artefatos, e tarefas subsequentes podem "consumir" esses artefatos.
+
+Isso é útil para pipelines de CI/CD, onde uma etapa de compilação pode gerar um binário (artefato), que é então usado por uma etapa de teste ou de implantação.
+
+### Como Funciona
+
+1.  **Produzindo Artefatos:** Adicione a chave `artifacts` à sua definição de tarefa. O valor pode ser um único padrão de arquivo (ex: `"report.txt"`) ou uma lista (ex: `{"*.log", "app.bin"}`). Após a tarefa ser executada com sucesso, o runner procurará por arquivos no `workdir` da tarefa que correspondam a esses padrões e os copiará para um armazenamento de artefatos compartilhado para a pipeline.
+
+2.  **Consumindo Artefatos:** Adicione a chave `consumes` à definição de outra tarefa (que normalmente `depends_on` da tarefa produtora). O valor deve ser o nome do arquivo do artefato que você deseja usar (ex: `"report.txt"`). Antes que esta tarefa seja executada, o runner copiará o artefato nomeado do armazenamento compartilhado para o `workdir` desta tarefa, tornando-o disponível para o `command`.
+
+### Exemplo de Artefatos
+
+```lua
+TaskDefinitions = {
+  ["ci-pipeline"] = {
+    description = "Demonstra o uso de artefatos.",
+    create_workdir_before_run = true,
+    tasks = {
+      {
+        name = "build",
+        description = "Cria um binário e o declara como um artefato.",
+        command = "echo 'binary_content' > app.bin",
+        artifacts = {"app.bin"}
+      },
+      {
+        name = "test",
+        description = "Consome o binário para executar testes.",
+        depends_on = "build",
+        consumes = {"app.bin"},
+        command = function(params)
+          -- Neste ponto, 'app.bin' existe no workdir desta tarefa
+          local content, err = fs.read(params.workdir .. "/app.bin")
+          if content == "binary_content" then
+            log.info("Artefato consumido com sucesso!")
+            return true
+          else
+            return false, "Conteúdo do artefato incorreto!"
+          end
+        end
+      }
+    }
+  }
+}
+```
 
 ### Exemplo de Estrutura `TaskDefinitions`
 
