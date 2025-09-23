@@ -126,6 +126,18 @@ Exibe uma tabela de todos os modelos disponíveis que podem ser usados com o com
 
 ---
 
+## `sloth-runner artifacts`
+
+Gerencia os artefatos de tarefas, que são arquivos ou diretórios produzidos pelas tarefas.
+
+**Subcomandos:**
+
+*   `sloth-runner artifacts list`: Lista todos os artefatos coletados.
+*   `sloth-runner artifacts get <artifact_path>`: Baixa um artefato específico.
+*   `sloth-runner artifacts clean`: Limpa artefatos antigos ou indesejados.
+
+---
+
 ## 📄 Modelos
 
 `sloth-runner` oferece vários modelos para criar rapidamente novos arquivos de definição de tarefas.

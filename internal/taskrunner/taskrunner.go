@@ -311,11 +311,14 @@ func (tr *TaskRunner) Run() error {
 			return fmt.Errorf("failed to create workdir %s: %w", workdir, err)
 		}
 
-		artifactsDir, err := ioutil.TempDir(os.TempDir(), groupName+"-artifacts-*")
-		if err != nil {
-			return fmt.Errorf("failed to create artifacts directory: %w", err)
+		artifactsBaseDir := "artifacts" // Persistent artifacts directory in project root
+		artifactsGroupDir := filepath.Join(artifactsBaseDir, groupName)
+		artifactsTaskRunDir := filepath.Join(artifactsGroupDir, time.Now().Format("20060102-150405")) // Timestamped directory for each run
+
+		if err := os.MkdirAll(artifactsTaskRunDir, 0755); err != nil {
+			return fmt.Errorf("failed to create persistent artifacts directory %s: %w", artifactsTaskRunDir, err)
 		}
-		defer os.RemoveAll(artifactsDir)
+		artifactsDir := artifactsTaskRunDir // Use this as the destination for artifacts
 
 		session := &types.SharedSession{
 			Workdir: workdir,
@@ -410,7 +413,7 @@ func (tr *TaskRunner) Run() error {
 						if err := copyFile(match, destPath); err != nil {
 							slog.Error("Failed to produce artifact", "task", task.Name, "artifact", match, "error", err)
 						} else {
-							slog.Info("Produced artifact", "task", task.Name, "artifact", filepath.Base(match))
+							slog.Info("Produced artifact", "task", task.Name, "artifact", destPath)
 						}
 					}
 				}

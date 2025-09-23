@@ -126,6 +126,18 @@ sloth-runner template list
 
 ---
 
+## `sloth-runner artifacts`
+
+管理任务产物，即任务生成的文件或目录。
+
+**子命令:**
+
+*   `sloth-runner artifacts list`: 列出所有收集的产物。
+*   `sloth-runner artifacts get <artifact_path>`: 下载特定的产物。
+*   `sloth-runner artifacts clean`: 清理旧的或不需要的产物。
+
+---
+
 ## `sloth-runner version`
 
 打印 `sloth-runner` 应用程序的当前版本。

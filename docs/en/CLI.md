@@ -126,6 +126,18 @@ sloth-runner template list
 
 ---
 
+## `sloth-runner artifacts`
+
+Manages task artifacts, which are files or directories produced by tasks.
+
+**Subcommands:**
+
+*   `sloth-runner artifacts list`: Lists all collected artifacts.
+*   `sloth-runner artifacts get <artifact_path>`: Downloads a specific artifact.
+*   `sloth-runner artifacts clean`: Cleans up old or unwanted artifacts.
+
+---
+
 ### `sloth-runner version`
 
 Displays the current version of `sloth-runner`.
