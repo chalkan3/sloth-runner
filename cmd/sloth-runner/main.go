@@ -894,12 +894,79 @@ func init() {
 }
 
 func main() {
-	// Use pterm's slog handler to make logs coexist with the live dashboard
-	slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+	var filePath string
+	var valuesPath string
+	var yes bool
+	var taskName string
+	var listTasks bool
 
-	rootCmd.SilenceUsage = true // Suppress help on execution errors
-	if err := rootCmd.Execute(); err != nil {
-		slog.Error("execution failed", "err", err)
+	flag.StringVar(&filePath, "file", "", "Path to the Lua script file")
+	flag.StringVar(&valuesPath, "values", "", "Path to the YAML values file")
+	flag.BoolVar(&yes, "yes", false, "Skip confirmation for destructive actions")
+	flag.StringVar(&taskName, "task", "", "Specific task to run (optional)")
+	flag.BoolVar(&listTasks, "list", false, "List all tasks in the file")
+	flag.Parse()
+
+	if filePath == "" {
+		slog.Error("Error: --file is required")
+		os.Exit(1)
+	}
+
+	// Load task definitions
+	taskGroups, err := taskrunner.LoadTaskDefinitions(filePath, valuesPath)
+	if err != nil {
+		slog.Error("Error loading task definitions", "err", err)
+		os.Exit(1)
+	}
+
+	if listTasks {
+		taskrunner.ListTasks(taskGroups)
+		return
+	}
+
+	// Determine which task group to run
+	var groupToRun types.TaskGroup
+	var found bool
+	if taskName != "" {
+		for _, group := range taskGroups {
+			for _, task := range group.Tasks {
+				if task.Name == taskName {
+					groupToRun = group
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			slog.Error("Error: Task not found", "task", taskName)
+			os.Exit(1)
+		}
+	} else if len(taskGroups) == 1 {
+		// If only one group, run it by default
+		for _, group := range taskGroups {
+			groupToRun = group
+			found = true
+			break
+		}
+	} else {
+		slog.Error("Error: Multiple task groups found. Please specify one with --task or use --list to see available tasks.")
+		os.Exit(1)
+	}
+
+	if !found {
+		slog.Error("Error: No task group to run.")
+		os.Exit(1)
+	}
+
+	tr := taskrunner.NewTaskRunner(lua.NewState(), taskGroups, groupToRun.Name, nil, false) // Initialize TaskRunner here
+
+	// Run the task group
+	err = tr.Run()
+	if err != nil {
+		slog.Error("Error running tasks", "err", err)
 		os.Exit(1)
 	}
 }
