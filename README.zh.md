@@ -174,230 +174,19 @@ TaskDefinitions = {
 
 ---
 
-## 高级功能
+## 📄 模板
 
-`sloth-runner` 提供了几个高级功能，用于对任务执行进行精细控制。
+`sloth-runner` 提供了几个模板，可以快速搭建新的任务定义文件。
 
-### 任务重试和超时
-
-您可以通过为不稳定的任务指定重试次数和为长时间运行的任务指定超时来使您的工作流更加健壮。
-
-*   `retries`: 如果任务失败，重试的次数。
-*   `timeout`: 一个持续时间字符串（例如 "10s", "1m"），超过该时间后任务将被终止。
-
-<details>
-<summary>示例 (`examples/retries_and_timeout.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    robust_workflow = {
-        description = "一个演示重试和超时的工作流",
-        tasks = {
-            {
-                name = "flaky_task",
-                description = "这个任务有 50% 的几率失败",
-                retries = 3,
-                command = function()
-                    if math.random() < 0.5 then
-                        log.error("模拟随机失败！")
-                        return false, "发生随机失败"
-                    end
-                    return true, "echo '不稳定的任务成功！'", { result = "success" }
-                end
-            },
-            {
-                name = "long_running_task",
-                description = "这个任务模拟一个将超时的长进程",
-                timeout = "2s",
-                command = "sleep 5 && echo '这不应该被打印出来'"
-            }
-        }
-    }
-}
-```
-</details>
-
-### 条件执行: `run_if` 和 `abort_if`
-
-您可以使用 `run_if` 和 `abort_if` 根据条件控制任务执行。这些可以是 shell 命令或 Lua 函数。
-
-*   `run_if`: 只有在满足条件时才会执行任务。
-*   `abort_if`: 如果满足条件，整个执行过程将被中止。
-
-#### 使用 Shell 命令
-
-执行 shell 命令，其退出代码决定结果。退出代码 `0` 表示条件满足（成功）。
-
-<details>
-<summary>示例 (`examples/conditional_execution.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    conditional_workflow = {
-        description = "一个使用 run_if 和 abort_if 演示条件执行的工作流。",
-        tasks = {
-            {
-                name = "check_condition_for_run",
-                description = "这个任务创建一个文件，下一个任务会检查该文件。",
-                command = "touch /tmp/sloth_runner_run_condition"
-            },
-            {
-                name = "conditional_task",
-                description = "这个任务只有在条件文件存在时才运行。",
-                depends_on = "check_condition_for_run",
-                run_if = "test -f /tmp/sloth_runner_run_condition",
-                command = "echo '条件任务正在运行，因为条件已满足。'"
-            },
-            {
-                name = "check_abort_condition",
-                description = "如果特定文件存在，此任务将中止。",
-                abort_if = "test -f /tmp/sloth_runner_abort_condition",
-                command = "echo '如果中止条件满足，这不会运行。'"
-            }
-        }
-    }
-}
-```
-</details>
-
-#### 使用 Lua 函数
-
-对于更复杂的逻辑，您可以使用 Lua 函数。该函数接收任务的 `params` 和 `deps`（来自依赖项的输出）。它必须返回 `true` 才能满足条件。
-
-<details>
-<summary>示例 (`examples/conditional_functions.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    conditional_functions_workflow = {
-        description = "一个使用 Lua 函数演示条件执行的工作流。",
-        tasks = {
-            {
-                name = "setup_task",
-                description = "此任务为条件任务提供输出。",
-                command = function()
-                    return true, "设置完成", { should_run = true }
-                end
-            },
-            {
-                name = "conditional_task_with_function",
-                description = "此任务仅在 run_if 函数返回 true 时运行。",
-                depends_on = "setup_task",
-                run_if = function(params, deps)
-                    log.info("正在检查 conditional_task_with_function 的 run_if 条件...")
-                    if deps.setup_task and deps.setup_task.should_run == true then
-                        log.info("条件满足，任务将运行。")
-                        return true
-                    end
-                    log.info("条件不满足，任务将被跳过。")
-                    return false
-                end,
-                command = "echo '条件任务正在运行，因为函数返回了 true。'"
-            },
-            {
-                name = "abort_task_with_function",
-                description = "如果 abort_if 函数返回 true，此任务将中止执行。",
-                params = {
-                    abort_execution = "true"
-                },
-                abort_if = function(params, deps)
-                    log.info("正在检查 abort_task_with_function 的 abort_if 条件...")
-                    if params.abort_execution == "true" then
-                        log.info("中止条件满足，执行将停止。")
-                        return true
-                    end
-                    log.info("中止条件不满足。")
-                    return false
-                end,
-                command = "echo '这不应该被执行。'"
-            }
-        }
-    }
-}
-```
-</details>
-
-### 使用 `import` 的可重用任务模块
-
-您可以创建可重用的任务库，并将它们导入到您的主工作流文件中。这对于在多个项目之间共享通用任务（如构建 Docker 镜像、部署应用程序等）非常有用。
-
-全局 `import()` 函数加载另一个 Lua 文件并返回其返回值。路径相对于调用 `import` 的文件进行解析。
-
-**工作原理:**
-1.  创建一个模块（例如 `shared/docker.lua`），定义一个任务表并返回它。
-2.  在您的主文件中，调用 `import("shared/docker.lua")` 来加载模块。
-3.  在您的主 `TaskDefinitions` 表中使用 `uses` 字段引用导入的任务。`sloth-runner` 将自动将导入的任务与您提供的任何本地覆盖（如 `description` 或 `params`）合并。
-
-<details>
-<summary>模块示例 (`examples/shared/docker.lua`):</summary>
-
-```lua
--- examples/shared/docker.lua
--- 一个用于 Docker 任务的可重用模块。
-
-local TaskDefinitions = {
-    build = {
-        name = "build",
-        description = "构建一个 Docker 镜像",
-        params = {
-            tag = "latest",
-            dockerfile = "Dockerfile",
-            context = "."
-        },
-        command = function(params)
-            local image_name = params.image_name or "my-default-image"
-            -- ... 构建命令逻辑 ...
-            local cmd = string.format("docker build -t %s:%s -f %s %s", image_name, params.tag, params.dockerfile, params.context)
-            return true, cmd
-        end
-    },
-    push = {
-        name = "push",
-        description = "将 Docker 镜像推送到注册表",
-        -- ... 推送任务逻辑 ...
-    }
-}
-
-return TaskDefinitions
-```
-</details>
-
-<details>
-<summary>用法示例 (`examples/reusable_tasks.lua`):</summary>
-
-```lua
--- examples/reusable_tasks.lua
-
--- 导入可重用的 Docker 任务。
-local docker_tasks = import("shared/docker.lua")
-
-TaskDefinitions = {
-    app_deployment = {
-        description = "一个使用可重用 Docker 模块的工作流。",
-        tasks = {
-            -- 使用模块中的 'build' 任务并覆盖其参数。
-            build = {
-                uses = docker_tasks.build,
-                description = "构建主应用程序 Docker 镜像",
-                params = {
-                    image_name = "my-app",
-                    tag = "v1.0.0",
-                    context = "./app"
-                }
-            },
-            
-            -- 一个依赖于导入的 'build' 任务的常规任务。
-            deploy = {
-                name = "deploy",
-                description = "部署应用程序",
-                depends_on = "build",
-                command = "echo '正在部署...'"
-            }
-        }
-    }
-}
-```
-</details>
+| 模板名称           | 描述                                                                    |
+| :----------------- | :----------------------------------------------------------------------------- |
+| `simple`           | 生成一个包含“hello world”任务的单一组。非常适合入门。                     |
+| `python`           | 创建一个用于设置 Python 环境、安装依赖项和运行脚本的管道。                 |
+| `parallel`         | 演示如何并发运行多个任务。                                                  |
+| `python-pulumi`    | 使用 Python 管理的 Pulumi 基础设施部署管道。                                |
+| `python-pulumi-salt` | 使用 Pulumi 预置基础设施并使用 SaltStack 进行配置。                       |
+| `git-python-pulumi` | CI/CD 管道：克隆仓库，设置环境，并使用 Pulumi 进行部署。                   |
+| `dummy`            | 生成一个什么都不做的虚拟任务。                                              |
 
 ---
 
@@ -409,34 +198,132 @@ TaskDefinitions = {
 
 执行在 Lua 模板文件中定义的任务。
 
+**用法:** `sloth-runner run [flags]`
+
+**描述:**
+`run` 命令执行在 Lua 模板文件中定义的任务。
+您可以指定文件、环境变量，并针对特定的任务或任务组。
+
 **标志:**
 
-*   `-f, --file string`: Lua 任务配置文件路径。
-*   `-t, --tasks string`: 要运行的特定任务的逗号分隔列表。
-*   `-g, --group string`: 仅运行特定任务组中的任务。
-*   `-v, --values string`: 包含要传递给 Lua 任务的值的 YAML 文件路径。
-*   `-d, --dry-run`: 模拟任务执行而不实际运行它们。
+*   `-f, --file string`: Lua 任务配置文件路径 (默认: "examples/basic_pipeline.lua")
+*   `-e, --env string`: 任务环境 (例如: Development, Production) (默认: "Development")
+*   `-p, --prod`: 设置为 true 表示生产环境 (默认: false)
+*   `--shards string`: 分片编号的逗号分隔列表 (例如: 1,2,3) (默认: "1,2,3")
+*   `-t, --tasks string`: 要运行的特定任务的逗号分隔列表 (例如: task1,task2)
+*   `-g, --group string`: 仅运行特定任务组中的任务
+*   `-v, --values string`: 包含要传递给 Lua 任务的值的 YAML 文件路径
+*   `-d, --dry-run`: 模拟任务执行而不实际运行它们 (默认: false)
+*   `--return`: 以 JSON 格式返回目标任务的输出 (默认: false)
+*   `-y, --yes`: 绕过交互式任务选择并运行所有任务 (默认: false)
 
 ### `sloth-runner list`
 
-列出在 Lua 模板文件中定义的所有可用任务组和任务。
+列出所有可用的任务组和任务。
+
+**用法:** `sloth-runner list [flags]`
+
+**描述:**
+`list` 命令显示所有任务组及其各自的任务，以及它们的描述和依赖关系。
 
 **标志:**
 
-*   `-f, --file string`: Lua 任务配置文件路径。
-*   `-v, --values string`: 包含值的 YAML 文件路径。
+*   `-f, --file string`: Lua 任务配置文件路径 (默认: "examples/basic_pipeline.lua")
+*   `-e, --env string`: 任务环境 (例如: Development, Production) (默认: "Development")
+*   `-p, --prod`: 设置为 true 表示生产环境 (默认: false)
+*   `--shards string`: 分片编号的逗号分隔列表 (例如: 1,2,3) (默认: "1,2,3")
+*   `-v, --values string`: 包含要传递给 Lua 任务的值的 YAML 文件路径
 
----
+### `sloth-runner validate`
 
-## ⚙️ Lua API
+验证 Lua 任务文件的语法和结构。
 
-`sloth-runner` 将几个 Go 功能作为 Lua 模块公开，允许您的任务与系统和外部服务进行交互。
+**用法:** `sloth-runner validate [flags]`
 
-*   **`exec` 模块:** 执行 shell 命令。
-*   **`fs` 模块:** 执行文件系统操作。
-*   **`net` 模块:** 发出 HTTP 请求和下载文件。
-*   **`data` 模块:** 解析和序列化 JSON 和 YAML 数据。
-*   **`log` 模块:** 以不同的严重级别记录消息。
-*   **`salt` 模块:** 执行 SaltStack 命令。
+**描述:**
+`validate` 命令检查 Lua 任务文件的语法错误，并确保 `TaskDefinitions` 表结构正确。
 
-有关详细的 API 用法，请参阅 `/examples` 目录中的示例。
+**标志:**
+
+*   `-f, --file string`: Lua 任务配置文件路径 (默认: "examples/basic_pipeline.lua")
+*   `-e, --env string`: 任务环境 (例如: Development, Production) (默认: "Development")
+*   `-p, --prod`: 设置为 true 表示生产环境 (默认: false)
+*   `--shards string`: 分片编号的逗号分隔列表 (例如: 1,2,3) (默认: "1,2,3")
+*   `-v, --values string`: 包含要传递给 Lua 任务的值的 YAML 文件路径
+
+### `sloth-runner test`
+
+执行任务工作流的 Lua 测试文件。
+
+**用法:** `sloth-runner test -w <workflow-file> -f <test-file>`
+
+**描述:**
+`test` 命令针对工作流运行指定的 Lua 测试文件。
+在测试文件中，您可以使用 `test` 和 `assert` 模块来验证任务行为。
+
+**标志:**
+
+*   `-f, --file string`: Lua 测试文件路径 (必需)
+*   `-w, --workflow string`: 要测试的 Lua 工作流文件路径 (必需)
+
+### `sloth-runner repl`
+
+启动交互式 REPL 会话。
+
+**用法:** `sloth-runner repl [flags]`
+
+**描述:**
+`repl` 命令启动一个交互式 Read-Eval-Print Loop，允许您执行 Lua 代码并与所有内置的 sloth-runner 模块进行交互。
+您可以选择加载一个工作流文件以使其上下文可用。
+
+**标志:**
+
+*   `-f, --file string`: 要加载到 REPL 会话中的 Lua 工作流文件路径
+
+### `sloth-runner version`
+
+打印 sloth-runner 的版本号。
+
+**用法:** `sloth-runner version`
+
+**描述:**
+所有软件都有版本。这是 sloth-runner 的版本。
+
+### `sloth-runner template list`
+
+列出所有可用模板。
+
+**用法:** `sloth-runner template list`
+
+**描述:**
+显示一个表格，列出所有可用于 `new` 命令的模板。
+
+### `sloth-runner new <group-name>`
+
+从模板生成新的任务定义文件。
+
+**用法:** `sloth-runner new <group-name> [flags]`
+
+**描述:**
+`new` 命令创建一个样板 Lua 任务定义文件。
+您可以从不同的模板中选择并指定输出文件。
+运行 `sloth-runner template list` 查看所有可用模板。
+
+**参数:**
+
+*   `<group-name>`: 要生成的任务组的名称。
+
+**标志:**
+
+*   `-o, --output string`: 输出文件路径 (默认: stdout)
+*   `-t, --template string`: 要使用的模板。请参阅 `template list` 获取选项。 (默认: "simple")
+
+### `sloth-runner check dependencies`
+
+检查所需的外部 CLI 工具。
+
+**用法:** `sloth-runner check dependencies`
+
+**描述:**
+验证各种模块使用的所有外部命令行工具 (例如: docker, aws, doctl) 是否已安装并在系统的 PATH 中可用。
+

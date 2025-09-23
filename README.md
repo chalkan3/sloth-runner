@@ -174,230 +174,19 @@ TaskDefinitions = {
 
 ---
 
-## Advanced Features
+## 📄 Templates
 
-`sloth-runner` provides several advanced features for fine-grained control over task execution.
+`sloth-runner` provides several templates to quickly scaffold new task definition files.
 
-### Task Retries and Timeouts
-
-You can make your workflows more robust by specifying retries for flaky tasks and timeouts for long-running ones.
-
-*   `retries`: The number of times to retry a task if it fails.
-*   `timeout`: A duration string (e.g., "10s", "1m") after which a task will be terminated.
-
-<details>
-<summary>Example (`examples/retries_and_timeout.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    robust_workflow = {
-        description = "A workflow to demonstrate retries and timeouts",
-        tasks = {
-            {
-                name = "flaky_task",
-                description = "This task fails 50% of the time",
-                retries = 3,
-                command = function()
-                    if math.random() < 0.5 then
-                        log.error("Simulating a random failure!")
-                        return false, "A random failure occurred"
-                    end
-                    return true, "echo 'Flaky task succeeded!'", { result = "success" }
-                end
-            },
-            {
-                name = "long_running_task",
-                description = "This task simulates a long process that will time out",
-                timeout = "2s",
-                command = "sleep 5 && echo 'This should not be printed'"
-            }
-        }
-    }
-}
-```
-</details>
-
-### Conditional Execution: `run_if` and `abort_if`
-
-You can control task execution based on conditions using `run_if` and `abort_if`. These can be a shell command or a Lua function.
-
-*   `run_if`: The task will only be executed if the condition is met.
-*   `abort_if`: The entire execution will be aborted if the condition is met.
-
-#### Using Shell Commands
-
-The shell command is executed, and its exit code determines the result. An exit code of `0` means the condition was met (success).
-
-<details>
-<summary>Example (`examples/conditional_execution.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    conditional_workflow = {
-        description = "A workflow to demonstrate conditional execution with run_if and abort_if.",
-        tasks = {
-            {
-                name = "check_condition_for_run",
-                description = "This task creates a file that the next task checks for.",
-                command = "touch /tmp/sloth_runner_run_condition"
-            },
-            {
-                name = "conditional_task",
-                description = "This task only runs if the condition file exists.",
-                depends_on = "check_condition_for_run",
-                run_if = "test -f /tmp/sloth_runner_run_condition",
-                command = "echo 'The conditional task is running because the condition was met.'"
-            },
-            {
-                name = "check_abort_condition",
-                description = "This task will be aborted if a specific file exists.",
-                abort_if = "test -f /tmp/sloth_runner_abort_condition",
-                command = "echo 'This will not be executed if the abort condition is met.'"
-            }
-        }
-    }
-}
-```
-</details>
-
-#### Using Lua Functions
-
-For more complex logic, you can use a Lua function. The function receives the task's `params` and the `deps` (outputs from dependencies). It must return `true` for the condition to be met.
-
-<details>
-<summary>Example (`examples/conditional_functions.lua`):</summary>
-
-```lua
-TaskDefinitions = {
-    conditional_functions_workflow = {
-        description = "A workflow to demonstrate conditional execution with Lua functions.",
-        tasks = {
-            {
-                name = "setup_task",
-                description = "This task provides the output for the conditional task.",
-                command = function()
-                    return true, "Setup complete", { should_run = true }
-                end
-            },
-            {
-                name = "conditional_task_with_function",
-                description = "This task only runs if the run_if function returns true.",
-                depends_on = "setup_task",
-                run_if = function(params, deps)
-                    log.info("Checking run_if condition for conditional_task_with_function...")
-                    if deps.setup_task and deps.setup_task.should_run == true then
-                        log.info("Condition met, the task will run.")
-                        return true
-                    end
-                    log.info("Condition not met, the task will be skipped.")
-                    return false
-                end,
-                command = "echo 'The conditional task is running because the function returned true.'"
-            },
-            {
-                name = "abort_task_with_function",
-                description = "This task will abort the execution if the abort_if function returns true.",
-                params = {
-                    abort_execution = "true"
-                },
-                abort_if = function(params, deps)
-                    log.info("Checking abort_if condition for abort_task_with_function...")
-                    if params.abort_execution == "true" then
-                        log.info("Abort condition met, execution will be stopped.")
-                        return true
-                    end
-                    log.info("Abort condition not met.")
-                    return false
-                end,
-                command = "echo 'This should not be executed.'"
-            }
-        }
-    }
-}
-```
-</details>
-
-### Reusable Task Modules with `import`
-
-You can create libraries of reusable tasks and import them into your main workflow file. This is useful for sharing common tasks (like building Docker images, deploying applications, etc.) across multiple projects.
-
-The global `import()` function loads another Lua file and returns the value it returns. The path is resolved relative to the file calling `import`.
-
-**How it works:**
-1.  Create a module (e.g., `shared/docker.lua`) that defines a table of tasks and returns it.
-2.  In your main file, call `import("shared/docker.lua")` to load the module.
-3.  Reference the imported tasks in your main `TaskDefinitions` table using the `uses` field. `sloth-runner` will automatically merge the imported task with any local overrides you provide (like `description` or `params`).
-
-<details>
-<summary>Module Example (`examples/shared/docker.lua`):</summary>
-
-```lua
--- examples/shared/docker.lua
--- A reusable module for Docker tasks.
-
-local TaskDefinitions = {
-    build = {
-        name = "build",
-        description = "Builds a Docker image",
-        params = {
-            tag = "latest",
-            dockerfile = "Dockerfile",
-            context = "."
-        },
-        command = function(params)
-            local image_name = params.image_name or "my-default-image"
-            -- ... build command logic ...
-            local cmd = string.format("docker build -t %s:%s -f %s %s", image_name, params.tag, params.dockerfile, params.context)
-            return true, cmd
-        end
-    },
-    push = {
-        name = "push",
-        description = "Pushes a Docker image to a registry",
-        -- ... push task logic ...
-    }
-}
-
-return TaskDefinitions
-```
-</details>
-
-<details>
-<summary>Usage Example (`examples/reusable_tasks.lua`):</summary>
-
-```lua
--- examples/reusable_tasks.lua
-
--- Import the reusable Docker tasks.
-local docker_tasks = import("shared/docker.lua")
-
-TaskDefinitions = {
-    app_deployment = {
-        description = "A workflow that uses a reusable Docker module.",
-        tasks = {
-            -- Use the 'build' task from the module and override its parameters.
-            build = {
-                uses = docker_tasks.build,
-                description = "Builds the main application Docker image",
-                params = {
-                    image_name = "my-app",
-                    tag = "v1.0.0",
-                    context = "./app"
-                }
-            },
-            
-            -- A regular task that depends on the imported 'build' task.
-            deploy = {
-                name = "deploy",
-                description = "Deploys the application",
-                depends_on = "build",
-                command = "echo 'Deploying...'"
-            }
-        }
-    }
-}
-```
-</details>
+| Template Name      | Description                                                                    |
+| :----------------- | :----------------------------------------------------------------------------- |
+| `simple`           | Generates a single group with a 'hello world' task. Ideal for getting started. |
+| `python`           | Creates a pipeline to set up a Python environment, install dependencies, and run a script. |
+| `parallel`         | Demonstrates how to run multiple tasks concurrently.                           |
+| `python-pulumi`    | Pipeline to deploy Pulumi infrastructure managed with Python.                  |
+| `python-pulumi-salt` | Provisions infrastructure with Pulumi and configures it using SaltStack.       |
+| `git-python-pulumi` | CI/CD Pipeline: Clones a repo, sets up the environment, and deploys with Pulumi. |
+| `dummy`            | Generates a dummy task that does nothing.                                      |
 
 ---
 
@@ -409,22 +198,135 @@ TaskDefinitions = {
 
 Executes tasks defined in a Lua template file.
 
+**Usage:** `sloth-runner run [flags]`
+
+**Description:**
+The run command executes tasks defined in a Lua template file.
+You can specify the file, environment variables, and target specific tasks or groups.
+
 **Flags:**
 
-*   `-f, --file string`: Path to the Lua task configuration file.
-*   `-t, --tasks string`: Comma-separated list of specific tasks to run.
-*   `-g, --group string`: Run tasks only from a specific task group.
-*   `-v, --values string`: Path to a YAML file with values to be passed to Lua tasks.
-*   `-d, --dry-run`: Simulate the execution of tasks without actually running them.
+*   `-f, --file string`: Path to the Lua task configuration template file (default: "examples/basic_pipeline.lua")
+*   `-e, --env string`: Environment for the tasks (e.g., Development, Production) (default: "Development")
+*   `-p, --prod`: Set to true for production environment (default: false)
+*   `--shards string`: Comma-separated list of shard numbers (e.g., 1,2,3) (default: "1,2,3")
+*   `-t, --tasks string`: Comma-separated list of specific tasks to run (e.g., task1,task2)
+*   `-g, --group string`: Run tasks only from a specific task group
+*   `-v, --values string`: Path to a YAML file with values to be passed to Lua tasks
+*   `-d, --dry-run`: Simulate the execution of tasks without actually running them (default: false)
+*   `--return`: Return the output of the target tasks as JSON (default: false)
+*   `-y, --yes`: Bypass interactive task selection and run all tasks (default: false)
 
 ### `sloth-runner list`
 
-Lists all available task groups and tasks defined in a Lua template file.
+Lists all available task groups and tasks.
+
+**Usage:** `sloth-runner list [flags]`
+
+**Description:**
+The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.
 
 **Flags:**
 
-*   `-f, --file string`: Path to the Lua task configuration file.
-*   `-v, --values string`: Path to a YAML file with values.
+*   `-f, --file string`: Path to the Lua task configuration template file (default: "examples/basic_pipeline.lua")
+*   `-e, --env string`: Environment for the tasks (e.g., Development, Production) (default: "Development")
+*   `-p, --prod`: Set to true for production environment (default: false)
+*   `--shards string`: Comma-separated list of shard numbers (e.g., 1,2,3) (default: "1,2,3")
+*   `-v, --values string`: Path to a YAML file with values to be passed to Lua tasks
+
+### `sloth-runner validate`
+
+Validates the syntax and structure of a Lua task file.
+
+**Usage:** `sloth-runner validate [flags]`
+
+**Description:**
+The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.
+
+**Flags:**
+
+*   `-f, --file string`: Path to the Lua task configuration template file (default: "examples/basic_pipeline.lua")
+*   `-e, --env string`: Environment for the tasks (e.g., Development, Production) (default: "Development")
+*   `-p, --prod`: Set to true for production environment (default: false)
+*   `--shards string`: Comma-separated list of shard numbers (e.g., 1,2,3) (default: "1,2,3")
+*   `-v, --values string`: Path to a YAML file with values to be passed to Lua tasks
+
+### `sloth-runner test`
+
+Executes a Lua test file for a task workflow.
+
+**Usage:** `sloth-runner test -w <workflow-file> -f <test-file>`
+
+**Description:**
+The test command runs a specified Lua test file against a workflow.
+Inside the test file, you can use the 'test' and 'assert' modules to validate task behaviors.
+
+**Flags:**
+
+*   `-f, --file string`: Path to the Lua test file (required)
+*   `-w, --workflow string`: Path to the Lua workflow file to be tested (required)
+
+### `sloth-runner repl`
+
+Starts an interactive REPL session.
+
+**Usage:** `sloth-runner repl [flags]`
+
+**Description:**
+The repl command starts an interactive Read-Eval-Print Loop that allows you
+to execute Lua code and interact with all the built-in sloth-runner modules.
+You can optionally load a workflow file to have its context available.
+
+**Flags:**
+
+*   `-f, --file string`: Path to a Lua workflow file to load into the REPL session
+
+### `sloth-runner version`
+
+Print the version number of sloth-runner.
+
+**Usage:** `sloth-runner version`
+
+**Description:**
+All software has versions. This is sloth-runner's
+
+### `sloth-runner template list`
+
+Lists all available templates.
+
+**Usage:** `sloth-runner template list`
+
+**Description:**
+Displays a table of all available templates that can be used with the 'new' command.
+
+### `sloth-runner new <group-name>`
+
+Generates a new task definition file from a template.
+
+**Usage:** `sloth-runner new <group-name> [flags]`
+
+**Description:**
+The new command creates a boilerplate Lua task definition file.
+You can choose from different templates and specify an output file.
+Run 'sloth-runner template list' to see all available templates.
+
+**Arguments:**
+
+*   `<group-name>`: The name of the task group to generate.
+
+**Flags:**
+
+*   `-o, --output string`: Output file path (default: stdout)
+*   `-t, --template string`: Template to use. See `template list` for options. (default: "simple")
+
+### `sloth-runner check dependencies`
+
+Checks for required external CLI tools.
+
+**Usage:** `sloth-runner check dependencies`
+
+**Description:**
+Verifies that all external command-line tools used by the various modules (e.g., docker, aws, doctl) are installed and available in the system's PATH.
 
 ---
 
