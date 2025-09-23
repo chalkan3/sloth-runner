@@ -49,7 +49,7 @@ func (mod *DigitalOceanModule) doExec(L *lua.LState) int {
 	// Ensure JSON output for parsable results
 	args = append(args, "--output", "json")
 
-	cmd := exec.Command("doctl", args...)
+	cmd := ExecCommand("doctl", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

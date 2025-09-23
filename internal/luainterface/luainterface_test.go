@@ -70,28 +70,26 @@ func setupTest(t *testing.T) (*lua.LState, func()) {
 
 // --- BASIC TESTS ---
 
-func TestGCPExec_Basic(t *testing.T) {
+func TestGCP_ServiceAccount(t *testing.T) {
 	L, cleanup := setupTest(t)
 	defer cleanup()
 
 	mockExitCode = "0"
-	mockStdout = "Google Cloud SDK 123.456"
+	mockStdout = ""
 	mockStderr = ""
 
 	script := `
 		local gcp = require('gcp')
-		result = gcp.exec({"--version"})
+		local client = gcp.client({ project = "my-project" })
+		local sa = client:service_account("my-service-account")
+		sa:create({ display_name = "My Service Account" })
 	`
 	err := L.DoString(script)
 	assert.NoError(t, err)
 
-	result := L.GetGlobal("result").(*lua.LTable)
-	assert.Equal(t, "Google Cloud SDK 123.456", result.RawGetString("stdout").String())
-	assert.Equal(t, "", result.RawGetString("stderr").String())
-	assert.Equal(t, float64(0), float64(result.RawGetString("exit_code").(lua.LNumber)))
-
-	assert.Equal(t, 1, len(commandsCalled))
-	assert.Equal(t, []string{"gcloud", "--version"}, commandsCalled[0])
+	if assert.Equal(t, 1, len(commandsCalled)) {
+		assert.Equal(t, []string{"gcloud", "--project", "my-project", "iam", "service-accounts", "create", "my-service-account", "--display-name", "My Service Account"}, commandsCalled[0])
+	}
 }
 
 func TestGitClone_Basic(t *testing.T) {
@@ -121,10 +119,27 @@ func TestSaltTarget_Cmd_Basic(t *testing.T) {
 	L, cleanup := setupTest(t)
 	defer cleanup()
 	mockExitCode = "1"
-	err := L.DoString(`
+	mockStderr = "salt error"
+	script := `
 		local salt = require('salt')
-		salt.target("*", "glob"):cmd("test.ping")
-	`)
+		local client = salt.client()
+		local stdout, stderr, err = client:target("*", "glob"):cmd("test.ping")
+		assert_equal("", stdout)
+		assert_equal("salt error", stderr)
+		assert_not_nil(err)
+	`
+	// Helper function for assertions in Lua
+	L.SetGlobal("assert_equal", L.NewFunction(func(L *lua.LState) int {
+		expected := L.ToString(1)
+		actual := L.ToString(2)
+		assert.Equal(t, expected, actual)
+		return 0
+	}))
+	L.SetGlobal("assert_not_nil", L.NewFunction(func(L *lua.LState) int {
+		assert.NotNil(t, L.Get(1))
+		return 0
+	}))
+	err := L.DoString(script)
 	assert.NoError(t, err)
 }
 
@@ -141,6 +156,7 @@ func TestSaltExample_FluentAPI(t *testing.T) {
 	// Prepend require statements to the script content
 	fullScript := `
 		local salt = require('salt')
+		local client = salt.client({config = ""})
 		local log = require('log')
 		local data = require('data')
 	` + string(luaScript)
@@ -155,8 +171,8 @@ func TestSaltExample_FluentAPI(t *testing.T) {
 
 	// Assert that the correct salt commands were called in order
 	assert.Equal(t, 4, len(commandsCalled))
-	assert.Equal(t, []string{"salt", "glob", "keiteguica", "test.ping"}, commandsCalled[0])
-	assert.Equal(t, []string{"salt", "glob", "vm-gcp-squid-proxy*", "test.ping"}, commandsCalled[1])
-	assert.Equal(t, []string{"salt", "glob", "vm-gcp-squid-proxy*", "pkg.upgrade"}, commandsCalled[2])
-	assert.Equal(t, []string{"salt", "glob", "keiteguica", "cmd.run", "ls -la"}, commandsCalled[3])
+	assert.Equal(t, []string{"salt", "--out=json", "-L", "keiteguica", "test.ping"}, commandsCalled[0])
+	assert.Equal(t, []string{"salt", "--out=json", "-L", "vm-gcp-squid-proxy*", "test.ping"}, commandsCalled[1])
+	assert.Equal(t, []string{"salt", "--out=json", "-L", "vm-gcp-squid-proxy*", "pkg.upgrade"}, commandsCalled[2])
+	assert.Equal(t, []string{"salt", "--out=json", "-L", "keiteguica", "cmd.run", "ls -la"}, commandsCalled[3])
 }

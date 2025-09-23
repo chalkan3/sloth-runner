@@ -23,7 +23,7 @@ func gitClone(L *lua.LState) int {
 	url := L.CheckString(1)
 	path := L.CheckString(2)
 
-	cmd := exec.Command("git", "clone", url, path)
+	cmd := ExecCommand("git", "clone", url, path)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -61,9 +61,9 @@ func repoCheckout(L *lua.LState) int {
 
 	var cmd *exec.Cmd
 	if create {
-		cmd = exec.Command("git", "checkout", "-b", branch)
+		cmd = ExecCommand("git", "checkout", "-b", branch)
 	} else {
-		cmd = exec.Command("git", "checkout", branch)
+		cmd = ExecCommand("git", "checkout", branch)
 	}
 	cmd.Dir = repo.Path
 	var stderr bytes.Buffer
@@ -81,7 +81,7 @@ func repoCheckout(L *lua.LState) int {
 func repoPull(L *lua.LState) int {
 	repo := checkGitRepo(L)
 
-	cmd := exec.Command("git", "pull")
+	cmd := ExecCommand("git", "pull")
 	cmd.Dir = repo.Path
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -98,7 +98,7 @@ func repoPull(L *lua.LState) int {
 func repoPush(L *lua.LState) int {
 	repo := checkGitRepo(L)
 
-	cmd := exec.Command("git", "push")
+	cmd := ExecCommand("git", "push")
 	cmd.Dir = repo.Path
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

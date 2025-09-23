@@ -49,7 +49,7 @@ pulumiCmd := "pulumi " + strings.Join(commandParts, " ")
 
 	fullCommand := strings.Join(commands, " && ")
 
-	cmd := exec.Command("bash", "-c", fullCommand)
+	cmd := ExecCommand("bash", "-c", fullCommand)
 	cmd.Dir = stack.WorkDir
 
 	// Prepend Pulumi bin to PATH
@@ -276,7 +276,7 @@ var pulumiMethods = map[string]lua.LGFunction{
 func pulumiInstallPluginFn(L *lua.LState) int {
 	pluginName := L.CheckString(1)
 	fullCommand := fmt.Sprintf("pulumi plugin install language %s --reinstall", pluginName)
-	cmd := exec.Command("bash", "-c", fullCommand)
+	cmd := ExecCommand("bash", "-c", fullCommand)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

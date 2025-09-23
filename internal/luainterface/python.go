@@ -3,7 +3,6 @@ package luainterface
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -16,7 +15,7 @@ const pythonVenvTypeName = "python_venv"
 // runCommand is a helper function to execute system commands safely,
 // capturing stdout and stderr. It returns the success of the operation and the outputs.
 func runCommand(command string, args ...string) (bool, string, string) {
-	cmd := exec.Command(command, args...)
+	cmd := ExecCommand(command, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

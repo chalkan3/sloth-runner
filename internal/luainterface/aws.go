@@ -62,9 +62,9 @@ func (c *AWSClient) runAWSCommand(args ...string) (string, string, error) {
 	var cmd *exec.Cmd
 	if c.Profile != "" {
 		cmdArgs := append([]string{"exec", c.Profile, "--", "aws"}, args...)
-		cmd = exec.Command("aws-vault", cmdArgs...)
+		cmd = ExecCommand("aws-vault", cmdArgs...)
 	} else {
-		cmd = exec.Command("aws", args...)
+		cmd = ExecCommand("aws", args...)
 	}
 
 	var stdout, stderr bytes.Buffer

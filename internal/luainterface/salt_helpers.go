@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 )
 
 // RunCommand executes a command and returns its stdout, stderr, and error.
 func RunCommand(name string, args ...string) (string, string, error) {
-	cmd := exec.Command(name, args...)
+	cmd := ExecCommand(name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

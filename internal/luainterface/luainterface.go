@@ -492,7 +492,7 @@ func luaExecRun(L *lua.LState) int {
 
 	slog.Debug("executing command", "source", "lua", "command", commandStr)
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", commandStr)
+	cmd := ExecCommand("bash", "-c", commandStr)
 
 	// Set workdir from options
 	if workdir := opts.RawGetString("workdir"); workdir.Type() == lua.LTString {

@@ -37,7 +37,7 @@ func (mod *TerraformModule) tfExec(L *lua.LState, workdir string, args ...string
 		return 2
 	}
 
-	cmd := exec.Command("terraform", args...)
+	cmd := ExecCommand("terraform", args...)
 	cmd.Dir = workdir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

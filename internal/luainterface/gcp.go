@@ -3,7 +3,6 @@ package luainterface
 import (
 	"bytes"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	lua "github.com/yuin/gopher-lua"
@@ -197,7 +196,7 @@ func (c *GCPClient) runGCloudCommand(args ...string) (string, string, error) {
 	}
 	allArgs = append(allArgs, args...)
 
-	cmd := exec.Command("gcloud", allArgs...)
+	cmd := ExecCommand("gcloud", allArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

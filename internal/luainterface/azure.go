@@ -64,7 +64,7 @@ func (mod *AzureModule) azExec(L *lua.LState) int {
 		args = append(args, "--output", "json")
 	}
 
-	cmd := exec.Command("az", args...)
+	cmd := ExecCommand("az", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -2,7 +2,6 @@ package luainterface
 
 import (
 	"bytes"
-	"os/exec"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -89,26 +88,27 @@ func (st *SaltTarget) cmd(L *lua.LState) int {
 	}
 
 	fullArgs := []string{"--out=json"}
-	if st.Client.ConfigPath != "" {
+	if st.Client.ConfigPath != "" && st.Client.ConfigPath != "nil" {
 		fullArgs = append(fullArgs, "--config-dir="+st.Client.ConfigPath)
 	}
 	fullArgs = append(fullArgs, "-L", st.Target, cmdStr)
 	fullArgs = append(fullArgs, args...)
 
-	cmd := exec.Command("salt", fullArgs...)
+	cmd := ExecCommand("salt", fullArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	success := err == nil
 
-	result := L.NewTable()
-	result.RawSetString("success", lua.LBool(success))
-	result.RawSetString("stdout", lua.LString(stdout.String()))
-	result.RawSetString("stderr", lua.LString(stderr.String()))
-	L.Push(result)
-	return 1
+	L.Push(lua.LString(stdout.String()))
+	L.Push(lua.LString(stderr.String()))
+	if err != nil {
+		L.Push(lua.LString(err.Error()))
+	} else {
+		L.Push(lua.LNil)
+	}
+	return 3
 }
 
 // --- Loaders ---
@@ -124,6 +124,21 @@ var saltTargetMethods = map[string]lua.LGFunction{
 	"cmd": func(L *lua.LState) int {
 		target := checkSaltTarget(L)
 		return target.cmd(L)
+	},
+	"ping": func(L *lua.LState) int {
+		target := checkSaltTarget(L)
+		L.Push(L.NewFunction(target.cmd))
+		L.Push(L.Get(1))
+		L.Push(lua.LString("test.ping"))
+		L.Call(2, 0) // Call with 0 return values
+		L.Push(L.Get(1)) // Push the target object back
+		return 1
+	},
+	"result": func(L *lua.LState) int {
+		L.Push(L.Get(2))
+		L.Push(L.Get(3))
+		L.Push(L.Get(4))
+		return 3
 	},
 }
 

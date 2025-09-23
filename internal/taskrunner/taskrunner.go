@@ -24,7 +24,7 @@ func executeShellCondition(command string) (bool, error) {
 	if command == "" {
 		return false, fmt.Errorf("command cannot be empty")
 	}
-	cmd := exec.Command("bash", "-c", command)
+	cmd := luainterface.ExecCommand("bash", "-c", command)
 	if err := cmd.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			// Command executed but returned a non-zero exit code.

@@ -42,7 +42,7 @@ func (mod *DockerModule) luaDockerExec(L *lua.LState) int {
 
 // goDockerExec is the internal Go helper to run docker commands.
 func (mod *DockerModule) goDockerExec(L *lua.LState, args []string) int {
-	cmd := exec.Command("docker", args...)
+	cmd := ExecCommand("docker", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

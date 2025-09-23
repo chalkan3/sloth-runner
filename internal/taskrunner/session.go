@@ -1,14 +1,13 @@
 package taskrunner
 
 import (
-	"os/exec"
-
+	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/types"
 )
 
 // NewSharedSession creates and starts a new persistent shell session.
 func NewSharedSession() (*types.SharedSession, error) {
-	cmd := exec.Command("bash", "-i") // Interactive shell
+	cmd := luainterface.ExecCommand("bash", "-i") // Interactive shell
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
