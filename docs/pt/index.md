@@ -29,6 +29,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
     *   [Módulo Salt](./modules/salt.md)
     *   [Módulo Terraform](./modules/terraform.md)
 *   [Exemplos Avançados](./advanced-examples.md)
+*   [Funcionalidades Avançadas](./advanced-features.md)
 
 ---
 [English](../en/index.md) | [Português](./index.md) | [中文](../zh/index.md)

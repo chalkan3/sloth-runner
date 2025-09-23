@@ -356,6 +356,7 @@ var (
 	schedulerConfigPath string
 	runAsScheduler bool
 	setFlags       []string // New: To store key-value pairs for template data
+	interactive    bool     // New: To enable interactive mode for task execution
 	version        = "dev" // será substituído em tempo de compilação
 )
 
@@ -429,8 +430,27 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 		if err != nil {
 			return nil, fmt.Errorf("error reading values file %s: %w", valuesFilePath, err)
 		}
+
+		// Process values.yaml as a Go template
+		tmpl, err := template.New("values").Parse(string(valuesContent))
+		if err != nil {
+			return nil, fmt.Errorf("error parsing values template: %w", err)
+		}
+
+		// Create a map of environment variables to pass to the template
+		envMap := make(map[string]string)
+		for _, e := range os.Environ() {
+			pair := strings.SplitN(e, "=", 2)
+			envMap[pair[0]] = pair[1]
+		}
+
+		var renderedValues bytes.Buffer
+		if err := tmpl.Execute(&renderedValues, map[string]interface{}{"Env": envMap}); err != nil {
+			return nil, fmt.Errorf("error executing values template: %w", err)
+		}
+
 		var goValues map[string]interface{}
-		if err := yaml.Unmarshal(valuesContent, &goValues); err != nil {
+		if err := yaml.Unmarshal(renderedValues.Bytes(), &goValues); err != nil {
 			return nil, fmt.Errorf("error parsing values YAML from %s: %w", valuesFilePath, err)
 		}
 		luaValues := luainterface.GoValueToLua(L, goValues)
@@ -747,7 +767,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 			fmt.Println("No tasks selected.")
 			return nil
 		}
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun)
+		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun, interactive)
 		luainterface.OpenParallel(L, tr)
 		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {
@@ -977,6 +997,7 @@ func init() {
 	runCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Simulate the execution of tasks without actually running them")
 	runCmd.Flags().BoolVar(&returnOutput, "return", false, "Return the output of the target tasks as JSON")
 	runCmd.Flags().BoolVarP(&yes, "yes", "y", false, "Bypass interactive task selection and run all tasks")
+	runCmd.Flags().BoolVar(&interactive, "interactive", false, "Enable interactive mode for task execution")
 	listCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
 	listCmd.Flags().StringVarP(&env, "env", "e", "Development", "Environment for the tasks (e.g., Development, Production)")
 	listCmd.Flags().BoolVarP(&isProduction, "prod", "p", false, "Set to true for production environment")

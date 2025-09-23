@@ -22,6 +22,7 @@ sloth-runner run [flags]
 *   `-d, --dry-run`: Simulates the execution of tasks. It will print the tasks that would be run and in what order, but will not execute their `command`.
 *   `--return`: Prints the final output of the executed tasks as a JSON object to stdout. This includes both the return value of the last task and any data passed to the global `export()` function.
 *   `-y, --yes`: Bypasses the interactive task selection prompt when no specific tasks are provided with `-t`.
+*   `--interactive`: Enable interactive mode for task execution, prompting for user input before each task.
 
 **Examples:**
 

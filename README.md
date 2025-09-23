@@ -402,6 +402,17 @@ Verifies that all external command-line tools used by the various modules (e.g.,
 
 ---
 
+## 🚀 Advanced Features
+
+`sloth-runner` also includes several advanced features for more complex workflows and development scenarios.
+
+*   **Interactive Task Runner:** Step through tasks one by one for debugging and development.
+*   **Enhanced `values.yaml` Templating:** Use Go template syntax to inject environment variables into your `values.yaml` files for dynamic configurations.
+
+For detailed information on these and other advanced features, refer to the [Advanced Features documentation](./docs/advanced-features.md).
+
+---
+
 ## ⚙️ Lua API
 
 `sloth-runner` exposes several Go functionalities as Lua modules, allowing your tasks to interact with the system and external services.

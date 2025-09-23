@@ -26,6 +26,7 @@ Você pode especificar o arquivo, variáveis de ambiente e direcionar tarefas ou
 *   `-d, --dry-run`: Simula a execução das tarefas sem realmente executá-las (padrão: false)
 *   `--return`: Retorna a saída das tarefas de destino como JSON (padrão: false)
 *   `-y, --yes`: Ignora a seleção interativa de tarefas e executa todas as tarefas (padrão: false)
+*   `--interactive`: Habilita o modo interativo para execução de tarefas, solicitando a entrada do usuário antes de cada tarefa.
 
 ### `sloth-runner list`
 

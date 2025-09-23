@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/AlecAivazis/survey/v2"
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/types"
@@ -58,9 +59,10 @@ type TaskRunner struct {
 	Outputs     map[string]interface{}
 	Exports     map[string]interface{}
 	DryRun      bool
+	Interactive bool // New: To enable interactive mode
 }
 
-func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool) *TaskRunner {
+func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool, interactive bool) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
 		TaskGroups:  groups,
@@ -69,6 +71,7 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 		Outputs:     make(map[string]interface{}),
 		Exports:     make(map[string]interface{}),
 		DryRun:      dryRun,
+		Interactive: interactive,
 	}
 }
 
@@ -391,6 +394,29 @@ func (tr *TaskRunner) Run() error {
 			for _, depName := range task.DependsOn {
 				if output, ok := taskOutputs[depName]; ok {
 					inputFromDependencies.RawSetString(depName, output)
+				}
+			}
+
+			if tr.Interactive {
+				action := ""
+				prompt := &survey.Select{
+					Message: fmt.Sprintf("Task: %s (%s)", task.Name, task.Description),
+					Options: []string{"run", "skip", "abort", "continue"},
+					Default: "run",
+				}
+				survey.AskOne(prompt, &action)
+
+				switch action {
+				case "skip":
+					pterm.Info.Printf("Skipping task '%s' by user choice.\n", task.Name)
+					taskStatus[task.Name] = "Skipped"
+					p.Increment()
+					continue
+				case "abort":
+					pterm.Warning.Println("Aborting execution by user choice.")
+					return fmt.Errorf("execution aborted by user")
+				case "continue":
+					tr.Interactive = false // Disable interactive mode for subsequent tasks
 				}
 			}
 

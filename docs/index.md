@@ -10,6 +10,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 *   [Início Rápido](./getting-started.md)
 *   [Conceitos Essenciais](./core-concepts.md)
 *   [Exemplos Práticos](./EXAMPLES.md)
+*   [Funcionalidades Avançadas](./advanced-features.md)
 *   [REPL Interativo](./repl.md)
 *   **Módulos Built-in:**
     *   [Módulo AWS](./modules/aws.md)

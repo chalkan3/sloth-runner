@@ -29,6 +29,7 @@
     *   [Salt 模块](./modules/salt.md)
     *   [Terraform 模块](./modules/terraform.md)
 *   [高级示例](./advanced-examples.md)
+*   [高级功能](./advanced-features.md)
 
 ---
 [English](../en/index.md) | [Português](../pt/index.md) | [中文](./index.md)
