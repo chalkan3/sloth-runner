@@ -1,0 +1,37 @@
+# configs/unified_fluent_values.yaml
+#
+# Configuration values for the unified_fluent_workflow.lua pipeline.
+#
+# NOTE: You will need to replace placeholder values (like <...>) with your
+# actual configuration before running the pipeline.
+
+# Base paths for temporary artifacts
+paths:
+  base_workdir: "/tmp/sloth_runner_fluent_demo"
+  spoke_venv: "/tmp/sloth_runner_fluent_demo/spoke_venv"
+
+# Git repository configurations
+repos:
+  hub:
+    # A Pulumi project for a GCP network
+    url: "https://github.com/chalkan/gcp-hub-spoke-pulumi.git"
+    path: "/tmp/sloth_runner_fluent_demo/hub"
+  spoke:
+    # A Pulumi project for a GCP host/app
+    url: "https://github.com/chalkan/gcp-host-manager-pulumi.git"
+    path: "/tmp/sloth_runner_fluent_demo/spoke"
+
+# Pulumi configuration
+pulumi:
+  # Pulumi login URL, e.g., gs://my-pulumi-backend-bucket
+  login_url: "gs://pulumi-state-backend-chalkan3/"
+
+# Google Cloud Platform configuration
+gcp:
+  project: "chalkan3"
+  region: "us-central1"
+
+# Amazon Web Services configuration
+# aws:
+#   profile: "<YOUR_AWS_PROFILE_NAME>"
+#   s3_bucket_name: "<YOUR_S3_BUCKET_NAME>"

@@ -546,56 +546,26 @@ func OpenExec(L *lua.LState) {
 // --- Log Module ---
 func luaLogInfo(L *lua.LState) int {
 	message := L.CheckString(1)
-	attrs := getLogAttrsFromLuaTable(L, 2)
-	slog.Info(message, attrs...)
+	slog.Info(message, "source", "lua")
 	return 0
 }
 
 func luaLogWarn(L *lua.LState) int {
 	message := L.CheckString(1)
-	attrs := getLogAttrsFromLuaTable(L, 2)
-	slog.Warn(message, attrs...)
+	slog.Warn(message, "source", "lua")
 	return 0
 }
 
 func luaLogError(L *lua.LState) int {
 	message := L.CheckString(1)
-	attrs := getLogAttrsFromLuaTable(L, 2)
-	slog.Error(message, attrs...)
+	slog.Error(message, "source", "lua")
 	return 0
 }
 
 func luaLogDebug(L *lua.LState) int {
 	message := L.CheckString(1)
-	attrs := getLogAttrsFromLuaTable(L, 2)
-	slog.Debug(message, attrs...)
+	slog.Debug(message, "source", "lua")
 	return 0
-}
-
-func getLogAttrsFromLuaTable(L *lua.LState, arg int) []interface{} {
-	var attrs []interface{}
-	attrs = append(attrs, "source", "lua") // Always include source
-
-	// Extract run_id and task_id from context if available
-	ctx := L.Context()
-	if ctx != nil {
-		if runID, ok := ctx.Value("run_id").(string); ok {
-			attrs = append(attrs, "run_id", runID)
-		}
-		if taskID, ok := ctx.Value("task_id").(string); ok {
-			attrs = append(attrs, "task_id", taskID)
-		}
-	}
-
-	if L.GetTop() < arg || L.CheckTable(arg) == nil {
-		return attrs
-	}
-
-	luaTable := L.CheckTable(arg)
-	luaTable.ForEach(func(key, value lua.LValue) {
-		attrs = append(attrs, key.String(), LuaToGoValue(L, value))
-	})
-	return attrs
 }
 
 func LogLoader(L *lua.LState) int {

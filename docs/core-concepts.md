@@ -80,31 +80,130 @@ TaskDefinitions = {
 }
 ```
 
-### Exemplo de Estrutura `TaskDefinitions`
+📜 Defining Tasks in Lua
+Tasks are defined in Lua files, typically within a `TaskDefinitions` table. Each task can have a name, description, and a `command` (either a string for a shell command or a Lua function). For modular pipelines, tasks can declare dependencies using `depends_on` and receive outputs from previous tasks via the `inputs` table.
+
+Here's an example using our GCP Hub-and-Spoke orchestration pipeline, demonstrating how tasks are chained and how data flows between them:
 
 ```lua
+-- examples/gcp_pulumi_orchestration.lua
+--
+-- This pipeline demonstrates a complete, modular orchestration for deploying a GCP Hub and Spoke network.
+
 TaskDefinitions = {
-    my_first_group = {
-        description = "Um grupo de tarefas de exemplo.",
-        tasks = {
-            my_first_task = {
-                name = "my_first_task",
-                description = "Uma tarefa simples que executa um comando shell.",
-                command = "echo 'Hello from Sloth-Runner!'"
-            },
-            my_second_task = {
-                name = "my_second_task",
-                description = "Uma tarefa que depende da primeira e usa uma função Lua.",
-                depends_on = "my_first_task",
-                command = function(params, deps)
-                    log.info("Executando a segunda tarefa.")
-                    -- Você pode acessar outputs de tarefas anteriores via 'deps'
-                    -- local output_from_first = deps.my_first_task.some_output
-                    return true, "echo 'Second task completed!'"
-                end
-            }
-        }
+  gcp_deployment = {
+    description = "Orchestrates the deployment of a GCP Hub and Spoke architecture.",
+    tasks = {
+      {
+        name = "setup_workspace",
+        command = function()
+          log.info("Cleaning up previous run artifacts...")
+          fs.rm_r(values.paths.base_workdir)
+          fs.mkdir(values.paths.base_workdir)
+          return true, "Workspace cleaned and created."
+        end
+      },
+      {
+        name = "clone_hub_repo",
+        depends_on = "setup_workspace",
+        command = function()
+          log.info("Cloning Hub repository...")
+          local hub_repo = git.clone(values.repos.hub.url, values.repos.hub.path)
+          log.info("Hub repo cloned to: " .. hub_repo.path)
+          -- Return the cloned repository object to be used by dependent tasks
+          return true, "Hub repo cloned.", { repo = hub_repo }
+        end
+      },
+      {
+        name = "clone_spoke_repo",
+        depends_on = "setup_workspace",
+        command = function()
+          log.info("Cloning Spoke repository...")
+          local spoke_repo = git.clone(values.repos.spoke.url, values.repos.spoke.path)
+          log.info("Spoke repo cloned to: " .. spoke_repo.path)
+          -- Return the cloned repository object
+          return true, "Spoke repo cloned.", { repo = spoke_repo }
+        end
+      },
+      {
+        name = "setup_spoke_venv",
+        depends_on = "clone_spoke_repo", -- Depends on the spoke repo being cloned
+        command = function(inputs) -- Receives inputs from dependent tasks
+          log.info("Setting up Python venv for the host manager...")
+          local spoke_repo = inputs.clone_spoke_repo.repo -- Access the repo from the 'clone_spoke_repo' task's output
+          local spoke_venv = python.venv(values.paths.spoke_venv)
+            :create()
+            :pip("install setuptools")
+            :pip("install -r " .. spoke_repo.path .. "/requirements.txt")
+          log.info("Python venv for spoke is ready at: " .. values.paths.spoke_venv)
+          -- Return the venv object
+          return true, "Spoke venv created.", { venv = spoke_venv, repo = spoke_repo }
+        end
+      },
+      {
+        name = "deploy_hub_stack",
+        depends_on = "clone_hub_repo", -- Depends on the hub repo being cloned
+        command = function(inputs) -- Receives inputs from dependent tasks
+          log.info("Deploying GCP Hub Network...")
+          local hub_repo = inputs.clone_hub_repo.repo -- Access the repo from the 'clone_hub_repo' task's output
+          local hub_stack = pulumi.stack(values.pulumi.hub.stack_name, {
+            workdir = hub_repo.path,
+            login = values.pulumi.login_url
+          })
+          hub_stack:select():config_map(values.pulumi.hub.config)
+          local hub_result = hub_stack:up({ yes = true })
+          if not hub_result.success then
+            log.error("Hub stack deployment failed: " .. hub_result.stdout)
+            return false, "Hub stack deployment failed."
+          end
+          log.info("Hub stack deployed successfully.")
+          local hub_outputs = hub_stack:outputs()
+          -- Return the outputs of the hub stack
+          return true, "Hub stack deployed.", { outputs = hub_outputs }
+        end
+      },
+      {
+        name = "deploy_spoke_stack",
+        depends_on = { "setup_spoke_venv", "deploy_hub_stack" }, -- Depends on venv setup and hub deployment
+        command = function(inputs) -- Receives inputs from multiple dependent tasks
+          log.info("Deploying GCP Spoke Host...")
+          local spoke_repo = inputs.setup_spoke_venv.repo -- Access repo from venv setup task
+          local spoke_venv = inputs.setup_spoke_venv.venv -- Access venv from venv setup task
+          local hub_outputs = inputs.deploy_hub_stack.outputs -- Access hub outputs from hub deployment task
+
+          local spoke_stack = pulumi.stack(values.pulumi.spoke.stack_name, {
+            workdir = spoke_repo.path,
+            login = values.pulumi.login_url,
+            venv = spoke_venv
+          })
+
+          local spoke_config = values.pulumi.spoke.config
+          spoke_config.hub_network_self_link = hub_outputs.network_self_link -- Use hub output in spoke config
+
+          spoke_stack:select():config_map(spoke_config)
+          local spoke_result = spoke_stack:up({ yes = true })
+          if not spoke_result.success then
+            log.error("Spoke stack deployment failed: " .. spoke_result.stdout)
+            return false, "Spoke stack deployment failed."
+          end
+          log.info("Spoke stack deployed successfully.")
+          local spoke_outputs = spoke_stack:outputs()
+          return true, "Spoke stack deployed.", { outputs = spoke_outputs }
+        end
+      },
+      {
+          name = "final_summary",
+          depends_on = "deploy_spoke_stack", -- Depends on the final deployment task
+          command = function(inputs)
+              log.info("GCP Hub and Spoke orchestration completed successfully!")
+              -- You can access outputs from dependencies like this:
+              -- local hub_outputs = inputs.deploy_hub_stack.outputs
+              -- local spoke_outputs = inputs.deploy_spoke_stack.outputs
+              return true, "Orchestration successful."
+          end
+      }
     }
+  }
 }
 ```
 

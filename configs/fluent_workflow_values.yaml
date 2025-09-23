@@ -1,0 +1,17 @@
+# values.yaml for the Fluent Git+Pulumi Workflow
+
+gcp:
+  project: "chalkan3" 
+  region: "us-central1"
+  # This bucket will be used for the implicit pulumi login
+  pulumi_login_bucket: "gs://pulumi-state-backend-chalkan3/"
+
+# Configuration for the example infrastructure stack
+infra_stack:
+  name: "fluent-infra-prod"
+  repo_url: "https://github.com/chalkan3/gcp-host-manager" # Using this as a stand-in example
+  config:
+    gcp:project: "chalkan3"
+    gcp:region: "us-central1"
+    instance_name: "fluent-demo-instance"
+    instance_type: "e2-micro"
