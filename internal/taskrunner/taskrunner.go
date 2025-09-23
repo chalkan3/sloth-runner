@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/types"
 	"github.com/pterm/pterm"
@@ -290,7 +292,11 @@ func (tr *TaskRunner) Run() error {
 		if group.Workdir != "" {
 			workdir = group.Workdir
 		} else if group.CreateWorkdirBeforeRun {
-			workdir = filepath.Join(os.TempDir(), groupName)
+			uuid, err := uuid.NewRandom()
+			if err != nil {
+				return fmt.Errorf("failed to generate UUID for workdir: %w", err)
+			}
+			workdir = filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s", groupName, uuid.String()))
 			if err := os.RemoveAll(workdir); err != nil {
 				return fmt.Errorf("failed to clean fixed workdir %s: %w", workdir, err)
 			}
