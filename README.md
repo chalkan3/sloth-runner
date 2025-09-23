@@ -26,6 +26,13 @@ A flexible and extensible task runner application written in Go, powered by Lua 
 *   **💻 Command-Line Interface (CLI):**
     *   `run`: Execute tasks from a Lua configuration file.
     *   `list`: List all available task groups and tasks with their descriptions and dependencies.
+    *   `validate`: Validates the syntax and structure of a Lua task file.
+    *   `test`: Executes a Lua test file for a task workflow.
+    *   `repl`: Starts an interactive REPL session.
+    *   `version`: Print the version number of sloth-runner.
+    *   `template list`: Lists all available templates.
+    *   `new`: Generates a new task definition file from a template.
+    *   `check dependencies`: Checks for required external CLI tools.
 
 
 ## 📚 Complete Documentation

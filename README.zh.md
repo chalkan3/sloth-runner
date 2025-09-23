@@ -26,7 +26,13 @@
 *   **💻 命令行界面 (CLI):**
     *   `run`: 从 Lua 配置文件执行任务。
     *   `list`: 列出所有可用的任务组和任务及其描述和依赖关系。
-
+    *   `validate`: 验证 Lua 任务文件的语法和结构。
+    *   `test`: 执行任务工作流的 Lua 测试文件。
+    *   `repl`: 启动交互式 REPL 会话。
+    *   `version`: 打印 sloth-runner 的版本号。
+    *   `template list`: 列出所有可用模板。
+    *   `new`: 从模板生成新的任务定义文件。
+    *   `check dependencies`: 检查所需的外部 CLI 工具。
 
 ## 📚 完整文档
 
