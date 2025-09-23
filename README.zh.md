@@ -325,6 +325,7 @@ TaskDefinitions = {
 
 *   `-o, --output string`: 输出文件路径 (默认: stdout)
 *   `-t, --template string`: 要使用的模板。请参阅 `template list` 获取选项。 (默认: "simple")
+*   `--set key=value`: 传递键值对到模板，用于动态内容生成。
 
 ### `sloth-runner check dependencies`
 

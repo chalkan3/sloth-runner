@@ -388,6 +388,7 @@ Run 'sloth-runner template list' to see all available templates.
 
 *   `-o, --output string`: Output file path (default: stdout)
 *   `-t, --template string`: Template to use. See `template list` for options. (default: "simple")
+*   `--set key=value`: Pass key-value pairs to the template for dynamic content generation.
 
 ### `sloth-runner check dependencies`
 

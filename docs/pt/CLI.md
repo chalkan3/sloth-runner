@@ -161,6 +161,7 @@ Execute `sloth-runner template list` para ver as opções.
 
 *   `-o, --output string`: Caminho do arquivo de saída (padrão: stdout)
 *   `-t, --template string`: Modelo a ser usado. Veja `template list` para opções. (padrão: "simple")
+*   `--set key=value`: Passa pares chave-valor para o modelo para geração dinâmica de conteúdo.
 
 ### `sloth-runner check dependencies`
 

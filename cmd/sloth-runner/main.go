@@ -355,6 +355,7 @@ var (
 	templateName   string
 	schedulerConfigPath string
 	runAsScheduler bool
+	setFlags       []string // New: To store key-value pairs for template data
 	version        = "dev" // será substituído em tempo de compilação
 )
 
@@ -660,17 +661,23 @@ Run 'sloth-runner template list' to see all available templates.`,
 			return fmt.Errorf("invalid template '%s'. Use 'sloth-runner template list' to see the options", templateName)
 		}
 
-		data := struct {
-			GroupName string
-		}{
-			GroupName: sanitizedGroupName,
+		templateData := make(map[string]interface{})
+		templateData["GroupName"] = sanitizedGroupName
+
+		for _, set := range setFlags {
+			parts := strings.SplitN(set, "=", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid --set flag format: %s. Expected key=value", set)
+			}
+			templateData[parts[0]] = parts[1]
 		}
+
 		t, err := template.New("new_task").Parse(tmpl.Content)
 		if err != nil {
 			return fmt.Errorf("internal error processing template: %w", err)
 		}
 		var output bytes.Buffer
-		if err := t.Execute(&output, data); err != nil {
+		if err := t.Execute(&output, templateData); err != nil {
 			return fmt.Errorf("error populating template: %w", err)
 		}
 		if outputFile != "" {
@@ -959,6 +966,7 @@ func init() {
 
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
 	newCmd.Flags().StringVarP(&templateName, "template", "t", "simple", "Template to use. See 'template list' for options.")
+	newCmd.Flags().StringArrayVar(&setFlags, "set", []string{}, "Set key-value pairs for template data (e.g., --set image=my-app --set version=1.0)")
 	runCmd.Flags().StringVarP(&configFilePath, "file", "f", "examples/basic_pipeline.lua", "Path to the Lua task configuration template file")
 	runCmd.Flags().StringVarP(&env, "env", "e", "Development", "Environment for the tasks (e.g., Development, Production)")
 	runCmd.Flags().BoolVarP(&isProduction, "prod", "p", false, "Set to true for production environment")

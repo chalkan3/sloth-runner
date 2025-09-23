@@ -74,6 +74,7 @@ sloth-runner new <group-name> [flags]
 
 *   `-t, --template string`: 要使用的模板。默认为 `simple`。运行 `sloth-runner template list` 查看所有可用选项。
 *   `-o, --output string`: 输出文件的路径。如果未提供，生成的内容将打印到标准输出。
+*   `--set key=value`: 传递键值对到模板，用于动态内容生成。
 
 **示例:**
 ```bash

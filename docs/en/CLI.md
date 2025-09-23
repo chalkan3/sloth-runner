@@ -74,6 +74,7 @@ sloth-runner new <group-name> [flags]
 
 *   `-t, --template string`: The template to use. Default is `simple`. Run `sloth-runner template list` to see all available options.
 *   `-o, --output string`: The path to the output file. If not provided, the generated content will be printed to stdout.
+*   `--set key=value`: Pass key-value pairs to the template for dynamic content generation.
 
 **Example:**
 ```bash
