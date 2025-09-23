@@ -125,15 +125,6 @@ var saltTargetMethods = map[string]lua.LGFunction{
 		target := checkSaltTarget(L)
 		return target.cmd(L)
 	},
-	"ping": func(L *lua.LState) int {
-		target := checkSaltTarget(L)
-		L.Push(L.NewFunction(target.cmd))
-		L.Push(L.Get(1))
-		L.Push(lua.LString("test.ping"))
-		L.Call(2, 0) // Call with 0 return values
-		L.Push(L.Get(1)) // Push the target object back
-		return 1
-	},
 	"result": func(L *lua.LState) int {
 		L.Push(L.Get(2))
 		L.Push(L.Get(3))

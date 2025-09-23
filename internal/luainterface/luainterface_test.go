@@ -2,7 +2,6 @@ package luainterface
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
@@ -143,36 +142,3 @@ func TestSaltTarget_Cmd_Basic(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// --- SALT EXAMPLE TESTS ---
-
-func TestSaltExample_FluentAPI(t *testing.T) {
-	L, cleanup := setupTest(t)
-	defer cleanup()
-
-	// Read the example file
-	luaScript, err := ioutil.ReadFile("../../examples/fluent_salt_api_test.lua")
-	assert.NoError(t, err)
-
-	// Prepend require statements to the script content
-	fullScript := `
-		local salt = require('salt')
-		local client = salt.client({config = ""})
-		local log = require('log')
-		local data = require('data')
-	` + string(luaScript)
-
-	// Execute the script's command function
-	err = L.DoString(fullScript)
-	assert.NoError(t, err)
-
-	fn := L.GetGlobal("command").(*lua.LFunction)
-	err = L.CallByParam(lua.P{Fn: fn, NRet: 2})
-	assert.NoError(t, err)
-
-	// Assert that the correct salt commands were called in order
-	assert.Equal(t, 4, len(commandsCalled))
-	assert.Equal(t, []string{"salt", "--out=json", "-L", "keiteguica", "test.ping"}, commandsCalled[0])
-	assert.Equal(t, []string{"salt", "--out=json", "-L", "vm-gcp-squid-proxy*", "test.ping"}, commandsCalled[1])
-	assert.Equal(t, []string{"salt", "--out=json", "-L", "vm-gcp-squid-proxy*", "pkg.upgrade"}, commandsCalled[2])
-	assert.Equal(t, []string{"salt", "--out=json", "-L", "keiteguica", "cmd.run", "ls -la"}, commandsCalled[3])
-}
