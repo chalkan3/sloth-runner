@@ -6,6 +6,7 @@
 
 ## 目录
 
+*   [任务调度器](./scheduler.md)
 *   [快速入门](./getting-started.md)
 *   [核心概念](./core-concepts.md)
 *   [CLI 命令](./CLI.md)

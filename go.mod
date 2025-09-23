@@ -5,7 +5,9 @@ go 1.25.1
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/c-bata/go-prompt v0.2.6
+	github.com/google/uuid v1.6.0
 	github.com/pterm/pterm v0.12.81
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/gopher-lua v1.1.1
@@ -18,7 +20,6 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect

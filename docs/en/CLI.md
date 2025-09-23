@@ -125,11 +125,24 @@ sloth-runner template list
 
 ---
 
-## `sloth-runner version`
+### `sloth-runner version`
 
-Prints the current version of the `sloth-runner` application.
+Displays the current version of `sloth-runner`.
 
-**Usage:**
 ```bash
 sloth-runner version
 ```
+
+### `sloth-runner scheduler`
+
+Manages the `sloth-runner` task scheduler, allowing you to enable, disable, list, and delete scheduled tasks.
+
+For detailed information on scheduler commands and configuration, refer to the [Task Scheduler documentation](scheduler.md).
+
+**Subcommands:**
+
+*   `sloth-runner scheduler enable`: Starts the scheduler as a background process.
+*   `sloth-runner scheduler disable`: Stops the running scheduler process.
+*   `sloth-runner scheduler list`: Lists all configured scheduled tasks.
+*   `sloth-runner scheduler delete <task_name>`: Deletes a specific scheduled task.
+

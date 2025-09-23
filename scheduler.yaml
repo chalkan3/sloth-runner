@@ -1,0 +1,6 @@
+scheduled_tasks:
+  - name: "daily_example_task"
+    schedule: "@every 1m" # Run every minute for testing
+    task_file: "examples/basic_pipeline.lua"
+    task_group: "basic_pipeline"
+    task_name: "fetch_data"

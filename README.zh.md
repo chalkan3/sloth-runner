@@ -22,6 +22,7 @@
     *   **`log` 模块:** 以不同的严重级别（info、warn、error、debug）记录消息。
     *   **`salt` 模块:** 直接执行 SaltStack 命令（`salt`、`salt-call`）。
     *   **`gcp` 模块:** 执行谷歌云 (`gcloud`) 命令行指令。
+*   **⏰ 任务调度器:** 使用 cron 语法自动执行您的 Lua 任务，作为持久的后台进程运行。
 *   **📝 `values.yaml` 集成:** 通过 `values.yaml` 文件将配置值传递给您的 Lua 任务，类似于 Helm。
 *   **💻 命令行界面 (CLI):**
     *   `run`: 从 Lua 配置文件执行任务。
@@ -30,6 +31,7 @@
     *   `test`: 执行任务工作流的 Lua 测试文件。
     *   `repl`: 启动交互式 REPL 会话。
     *   `version`: 打印 sloth-runner 的版本号。
+    *   `scheduler`: 管理后台任务调度器，包括启用、禁用、列出和删除调度任务。
     *   `template list`: 列出所有可用模板。
     *   `new`: 从模板生成新的任务定义文件。
     *   `check dependencies`: 检查所需的外部 CLI 工具。

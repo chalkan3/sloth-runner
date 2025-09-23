@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"text/template"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/pterm/pterm"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/repl"
+	"github.com/chalkan3/sloth-runner/internal/scheduler"
 	"github.com/chalkan3/sloth-runner/internal/taskrunner"
 	"github.com/chalkan3/sloth-runner/internal/types"
 	lua "github.com/yuin/gopher-lua"
@@ -350,8 +353,34 @@ var (
 	yes            bool
 	outputFile     string
 	templateName   string
+	schedulerConfigPath string
+	runAsScheduler bool
 	version        = "dev" // será substituído em tempo de compilação
 )
+
+const schedulerPIDFile = "sloth-runner-scheduler.pid"
+
+// Mockable functions for testing
+var execCommand = exec.Command
+var osFindProcess = os.FindProcess
+var processSignal = func(p *os.Process, sig os.Signal) error {
+	return p.Signal(sig)
+}
+
+// SetExecCommand allows tests to override the exec.Command function
+func SetExecCommand(f func(name string, arg ...string) *exec.Cmd) {
+	execCommand = f
+}
+
+// SetOSFindProcess allows tests to override the os.FindProcess function
+func SetOSFindProcess(f func(pid int) (*os.Process, error)) {
+	osFindProcess = f
+}
+
+// SetProcessSignal allows tests to override the process.Signal function
+func SetProcessSignal(f func(p *os.Process, sig os.Signal) error) {
+	processSignal = f
+}
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
@@ -411,6 +440,174 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 		return nil, fmt.Errorf("error loading task definitions: %w", err)
 	}
 	return taskGroups, nil
+}
+
+var schedulerCmd = &cobra.Command{
+	Use:   "scheduler",
+	Short: "Manages the background task scheduler",
+	Long:  `The scheduler command provides subcommands to enable and disable the sloth-runner background task scheduler.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
+var enableCmd = &cobra.Command{
+	Use:   "enable",
+	Short: "Starts the sloth-runner scheduler in the background",
+	Long: `The enable command starts the sloth-runner scheduler as a persistent background process.
+It will monitor and execute tasks defined in the scheduler configuration file.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Check if scheduler is already running
+		if _, err := os.Stat(schedulerPIDFile); err == nil {
+			pidBytes, err := ioutil.ReadFile(schedulerPIDFile)
+			if err == nil {
+				pid, _ := strconv.Atoi(string(pidBytes))
+				if process, err := os.FindProcess(pid); err == nil {
+					if err := processSignal(process, syscall.Signal(0)); err == nil {
+						fmt.Printf("Scheduler is already running with PID %d.\n", pid)
+						return nil
+					}
+				}
+			}
+			// PID file exists but process is not running, clean up
+			os.Remove(schedulerPIDFile)
+		}
+
+		fmt.Println("Starting sloth-runner scheduler in background...")
+
+		// Re-execute the current binary in background with a special flag
+		command := execCommand(os.Args[0], "--run-as-scheduler", "--scheduler-config", schedulerConfigPath)
+		command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		command.Stdout = os.Stdout // For debugging, redirect to /dev/null in production
+		command.Stderr = os.Stderr // For debugging, redirect to /dev/null in production
+
+		if err := command.Start(); err != nil {
+			return fmt.Errorf("failed to start scheduler process: %w", err)
+		}
+
+		// Write PID to file
+		if err := ioutil.WriteFile(schedulerPIDFile, []byte(strconv.Itoa(command.Process.Pid)), 0644); err != nil {
+			return fmt.Errorf("failed to write PID file: %w", err)
+		}
+
+		fmt.Printf("Scheduler started with PID %d. Logs will be redirected to stdout/stderr of the background process.\n", command.Process.Pid)
+		fmt.Printf("To stop the scheduler, run: sloth-runner scheduler disable\n")
+		return nil
+	},
+}
+
+var disableCmd = &cobra.Command{
+	Use:   "disable",
+	Short: "Stops the running sloth-runner scheduler",
+	Long:  `The disable command stops the background sloth-runner scheduler process.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pidBytes, err := ioutil.ReadFile(schedulerPIDFile)
+		if err != nil {
+			return fmt.Errorf("scheduler PID file not found or readable. Is the scheduler running? %w", err)
+		}
+
+		pid, err := strconv.Atoi(string(pidBytes))
+		if err != nil {
+			return fmt.Errorf("invalid PID in file %s: %w", schedulerPIDFile, err)
+		}
+
+		process, err := osFindProcess(pid)
+		if err != nil {
+			return fmt.Errorf("failed to find process with PID %d: %w", pid, err)
+		}
+
+		// Send terminate signal
+		if err := processSignal(process, syscall.SIGTERM); err != nil {
+			return fmt.Errorf("failed to terminate scheduler process with PID %d: %w", pid, err)
+		}
+
+		// Wait a bit for the process to terminate
+		time.Sleep(1 * time.Second)
+
+		// Check if process is still running
+		if err := processSignal(process, syscall.Signal(0)); err == nil {
+			return fmt.Errorf("scheduler process with PID %d did not terminate after SIGTERM", pid)
+		}
+
+		// Remove PID file
+		if err := os.Remove(schedulerPIDFile); err != nil {
+			fmt.Printf("Warning: Failed to remove PID file %s: %v\n", schedulerPIDFile, err)
+		}
+
+		fmt.Printf("Scheduler with PID %d stopped successfully.\n", pid)
+		return nil
+	},
+}
+
+
+
+var listScheduledCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Lists all configured scheduled tasks",
+	Long:  `The list command displays all tasks defined in the scheduler configuration file.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sched := scheduler.NewScheduler(schedulerConfigPath)
+		if err := sched.LoadConfig(); err != nil {
+			return fmt.Errorf("failed to load scheduler config: %w", err)
+		}
+
+		if sched.Config() == nil || len(sched.Config().ScheduledTasks) == 0 {
+			fmt.Println("No scheduled tasks configured.")
+			return nil
+		}
+
+		pterm.DefaultSection.Println("Configured Scheduled Tasks")
+		tableData := pterm.TableData{
+			{"NAME", "SCHEDULE", "FILE", "GROUP", "TASK"},
+		}
+		for _, task := range sched.Config().ScheduledTasks {
+			tableData = append(tableData, []string{task.Name, task.Schedule, task.TaskFile, task.TaskGroup, task.TaskName})
+		}
+		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		return nil
+	},
+}
+
+var deleteScheduledCmd = &cobra.Command{
+	Use:   "delete <task-name>",
+	Short: "Deletes a scheduled task from the configuration",
+	Long:  `The delete command removes a specific scheduled task from the scheduler configuration file.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskName := args[0]
+
+		sched := scheduler.NewScheduler(schedulerConfigPath)
+		if err := sched.LoadConfig(); err != nil {
+			return fmt.Errorf("failed to load scheduler config: %w", err)
+		}
+
+		if sched.Config() == nil || len(sched.Config().ScheduledTasks) == 0 {
+			return fmt.Errorf("no scheduled tasks configured to delete")
+		}
+
+		var updatedTasks []scheduler.ScheduledTask
+		found := false
+		for _, task := range sched.Config().ScheduledTasks {
+			if task.Name == taskName {
+				found = true
+				fmt.Printf("Deleting scheduled task '%s'...\n", taskName)
+			} else {
+				updatedTasks = append(updatedTasks, task)
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("scheduled task '%s' not found", taskName)
+		}
+
+		sched.SetConfig(&scheduler.SchedulerConfig{ScheduledTasks: updatedTasks})
+		if err := sched.SaveConfig(); err != nil {
+			return fmt.Errorf("failed to save updated scheduler config: %w", err)
+		}
+
+		fmt.Printf("Scheduled task '%s' deleted successfully. Please restart the scheduler for changes to take effect.\n", taskName)
+		return nil
+	},
 }
 
 var rootCmd = &cobra.Command{
@@ -752,7 +949,13 @@ func init() {
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(replCmd)
+	rootCmd.AddCommand(schedulerCmd)
 	checkCmd.AddCommand(dependenciesCmd)
+
+	schedulerCmd.AddCommand(enableCmd)
+	schedulerCmd.AddCommand(disableCmd)
+	schedulerCmd.AddCommand(listScheduledCmd)
+	schedulerCmd.AddCommand(deleteScheduledCmd)
 
 	newCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path (default: stdout)")
 	newCmd.Flags().StringVarP(&templateName, "template", "t", "simple", "Template to use. See 'template list' for options.")
@@ -781,6 +984,9 @@ func init() {
 	testCmd.MarkFlagRequired("file")
 	testCmd.MarkFlagRequired("workflow")
 	replCmd.Flags().StringP("file", "f", "", "Path to a Lua workflow file to load into the REPL session")
+
+	schedulerCmd.PersistentFlags().StringVarP(&schedulerConfigPath, "scheduler-config", "c", "scheduler.yaml", "Path to the scheduler configuration file")
+	rootCmd.PersistentFlags().BoolVar(&runAsScheduler, "run-as-scheduler", false, "(Internal) Do not use directly. Runs the process as a background scheduler.")
 }
 
 func main() {
@@ -788,6 +994,23 @@ func main() {
 	slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
 
 	rootCmd.SilenceUsage = true // Suppress help on execution errors
+
+	if runAsScheduler {
+		// This is the background scheduler process
+		sched := scheduler.NewScheduler(schedulerConfigPath)
+		if err := sched.LoadConfig(); err != nil {
+			slog.Error("failed to load scheduler config", "err", err)
+			os.Exit(1)
+		}
+		if err := sched.Start(); err != nil {
+			slog.Error("failed to start scheduler", "err", err)
+			os.Exit(1)
+		}
+
+		// Keep the scheduler running until terminated
+		select {}
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("execution failed", "err", err)
 		os.Exit(1)

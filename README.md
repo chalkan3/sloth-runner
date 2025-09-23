@@ -22,6 +22,7 @@ A flexible and extensible task runner application written in Go, powered by Lua 
     *   **`log` module:** Log messages with different severity levels (info, warn, error, debug).
     *   **`salt` module:** Execute SaltStack commands (`salt`, `salt-call`) directly.
     *   **`gcp` module:** Execute Google Cloud (`gcloud`) CLI commands.
+*   **⏰ Task Scheduler:** Automate the execution of your Lua tasks at specified intervals using cron syntax, running as a persistent background process.
 *   **📝 `values.yaml` Integration:** Pass configuration values to your Lua tasks through a `values.yaml` file, similar to Helm.
 *   **💻 Command-Line Interface (CLI):**
     *   `run`: Execute tasks from a Lua configuration file.
@@ -287,6 +288,68 @@ You can optionally load a workflow file to have its context available.
 **Flags:**
 
 *   `-f, --file string`: Path to a Lua workflow file to load into the REPL session
+
+### `sloth-runner scheduler`
+
+Manages the background task scheduler.
+
+**Usage:** `sloth-runner scheduler [command]`
+
+**Description:**
+The scheduler command provides subcommands to enable, disable, list, and delete the sloth-runner background task scheduler.
+
+#### `sloth-runner scheduler enable`
+
+Starts the sloth-runner scheduler in the background.
+
+**Usage:** `sloth-runner scheduler enable [flags]`
+
+**Description:**
+The enable command starts the sloth-runner scheduler as a persistent background process.
+It will monitor and execute tasks defined in the scheduler configuration file.
+
+**Flags:**
+
+*   `-c, --scheduler-config string`: Path to the scheduler configuration file (default: "scheduler.yaml")
+
+#### `sloth-runner scheduler disable`
+
+Stops the running sloth-runner scheduler.
+
+**Usage:** `sloth-runner scheduler disable`
+
+**Description:**
+The disable command stops the background sloth-runner scheduler process.
+
+#### `sloth-runner scheduler list`
+
+Lists all scheduled tasks.
+
+**Usage:** `sloth-runner scheduler list [flags]`
+
+**Description:**
+The list command displays all scheduled tasks defined in the scheduler configuration file.
+
+**Flags:**
+
+*   `-c, --scheduler-config string`: Path to the scheduler configuration file (default: "scheduler.yaml")
+
+#### `sloth-runner scheduler delete <task_name>`
+
+Deletes a specific scheduled task.
+
+**Usage:** `sloth-runner scheduler delete <task_name> [flags]`
+
+**Description:**
+The delete command removes a specific scheduled task from the scheduler configuration file.
+
+**Arguments:**
+
+*   `<task_name>`: The name of the scheduled task to delete.
+
+**Flags:**
+
+*   `-c, --scheduler-config string`: Path to the scheduler configuration file (default: "scheduler.yaml")
 
 ### `sloth-runner version`
 

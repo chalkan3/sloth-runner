@@ -133,3 +133,17 @@ sloth-runner template list
 ```bash
 sloth-runner version
 ```
+
+### `sloth-runner scheduler`
+
+管理 `sloth-runner` 任务调度器，允许您启用、禁用、列出和删除调度任务。
+
+有关调度器命令和配置的详细信息，请参阅 [任务调度器文档](scheduler.md)。
+
+**子命令:**
+
+*   `sloth-runner scheduler enable`: 将调度器作为后台进程启动。
+*   `sloth-runner scheduler disable`: 停止正在运行的调度器进程。
+*   `sloth-runner scheduler list`: 列出所有已配置的调度任务。
+*   `sloth-runner scheduler delete <task_name>`: 删除特定的调度任务。
+

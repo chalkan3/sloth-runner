@@ -26,6 +26,10 @@ Para listar as tarefas em um arquivo:
 sloth-runner list -f examples/basic_pipeline.lua
 ```
 
+## Agendador de Tarefas (Novo!)
+
+O Sloth-Runner agora inclui um poderoso agendador de tarefas que permite automatizar a execução de seus fluxos de trabalho em segundo plano usando sintaxe cron. Para mais detalhes sobre como configurar e usar o agendador, consulte a documentação completa em [Agendador de Tarefas](./scheduler.md).
+
 ## Próximos Passos
 
 Agora que você tem o Sloth-Runner instalado e funcionando, explore os [Conceitos Essenciais](./core-concepts.md) para entender como definir suas tarefas, ou mergulhe diretamente nos novos [Módulos Built-in](./index.md#módulos-built-in) para automação avançada com Git, Pulumi e Salt.

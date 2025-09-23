@@ -100,6 +100,19 @@ Imprime o número da versão do sloth-runner.
 **Descrição:**
 Todo software tem versões. Esta é a do sloth-runner.
 
+### `sloth-runner scheduler`
+
+Gerencia o agendador de tarefas do `sloth-runner`, permitindo habilitar, desabilitar, listar e excluir tarefas agendadas.
+
+Para informações detalhadas sobre os comandos e configuração do agendador, consulte a [documentação do Agendador de Tarefas](scheduler.md).
+
+**Subcomandos:**
+
+*   `sloth-runner scheduler enable`: Inicia o agendador como um processo em segundo plano.
+*   `sloth-runner scheduler disable`: Para o processo do agendador em execução.
+*   `sloth-runner scheduler list`: Lista todas as tarefas agendadas configuradas.
+*   `sloth-runner scheduler delete <task_name>`: Exclui uma tarefa agendada específica.
+
 ---
 
 ### `sloth-runner template list`

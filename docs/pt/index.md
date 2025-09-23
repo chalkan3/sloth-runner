@@ -6,6 +6,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 
 ## Índice
 
+*   [Agendador de Tarefas](./scheduler.md)
 *   [Início Rápido](./getting-started.md)
 *   [Conceitos Essenciais](./core-concepts.md)
 *   [Comandos da CLI](./CLI.md)
