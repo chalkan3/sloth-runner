@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	// "encoding/json" // Removed
 	"fmt"
 	"io/ioutil"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -28,6 +29,12 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+
+var testOutputBuffer *bytes.Buffer
+
+func SetTestOutputBuffer(buf *bytes.Buffer) {
+	testOutputBuffer = buf
+}
 
 var replCmd = &cobra.Command{
 	Use:   "repl",
@@ -360,7 +367,7 @@ var (
 	version        = "dev" // será substituído em tempo de compilação
 )
 
-const schedulerPIDFile = "sloth-runner-scheduler.pid"
+var schedulerPIDFile string
 
 // Mockable functions for testing
 var execCommand = exec.Command
@@ -387,7 +394,6 @@ func SetProcessSignal(f func(p *os.Process, sig os.Signal) error) {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of sloth-runner",
-	Long:  `All software has versions. This is sloth-runner's`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(version)
 	},
@@ -422,6 +428,30 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 	if err := tmpl.Execute(&renderedLua, data); err != nil {
 		return nil, fmt.Errorf("error executing Lua template: %w", err)
 	}
+
+	// Add plugins to Lua path
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	pluginsDir := filepath.Join(homeDir, ".sloth-runner", "plugins")
+
+	if _, err := os.Stat(pluginsDir); !os.IsNotExist(err) {
+		pluginDirs, err := ioutil.ReadDir(pluginsDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read plugins directory: %w", err)
+		}
+
+		packagePath := L.GetGlobal("package").(*lua.LTable).RawGetString("path").String()
+		for _, p := range pluginDirs {
+			if p.IsDir() {
+				pluginPath := filepath.Join(pluginsDir, p.Name(), "?.lua")
+				packagePath = pluginPath + ";" + packagePath
+			}
+		}
+		L.GetGlobal("package").(*lua.LTable).RawSetString("path", lua.LString(packagePath))
+	}
+
 	luainterface.OpenAll(L) // Moved here
 	luainterface.OpenImport(L, configFilePath)
 	luainterface.OpenParallel(L, tr)
@@ -472,29 +502,136 @@ var schedulerCmd = &cobra.Command{
 	},
 }
 
+var pluginCmd = &cobra.Command{
+	Use:   "plugin",
+	Short: "Manages plugins",
+	Long:  `The plugin command provides subcommands to install, list, and uninstall plugins.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
+var installCmd = &cobra.Command{
+	Use:   "install <url>",
+	Short: "Installs a plugin from a git repository",
+	Long:  `The install command clones a git repository from the given URL into the plugins directory.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pluginURL := args[0]
+
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		pluginsDir := filepath.Join(homeDir, ".sloth-runner", "plugins")
+		if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+			return fmt.Errorf("failed to create plugins directory: %w", err)
+		}
+
+		repoName := filepath.Base(pluginURL)
+		pluginName := strings.TrimSuffix(repoName, ".git")
+		pluginInstallPath := filepath.Join(pluginsDir, pluginName)
+
+		if _, err := os.Stat(pluginInstallPath); !os.IsNotExist(err) {
+			return fmt.Errorf("plugin '%s' is already installed", pluginName)
+		}
+
+		cmd.Printf("Installing plugin '%s' from %s...\n", pluginName, pluginURL)
+		gitCmd := exec.Command("git", "clone", pluginURL, pluginInstallPath)
+		gitCmd.Stdout = cmd.OutOrStdout()
+		gitCmd.Stderr = cmd.ErrOrStderr()
+		if err := gitCmd.Run(); err != nil {
+			return fmt.Errorf("failed to clone plugin repository: %w", err)
+		}
+		cmd.Printf("Plugin '%s' installed successfully.\n", pluginName)
+
+		return nil
+	},
+}
+
+var listPluginsCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Lists all installed plugins",
+	Long:  `The list command shows all plugins that are currently installed in the plugins directory.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		pluginsDir := filepath.Join(homeDir, ".sloth-runner", "plugins")
+
+		files, err := ioutil.ReadDir(pluginsDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				cmd.Println("No plugins installed.")
+				return nil
+			}
+			return fmt.Errorf("failed to read plugins directory: %w", err)
+		}
+
+		cmd.Println("Installed plugins:")
+		for _, f := range files {
+			if f.IsDir() {
+				cmd.Println("- " + f.Name())
+			}
+		}
+
+		return nil
+	},
+}
+
+var uninstallPluginCmd = &cobra.Command{
+	Use:   "uninstall <plugin-name>",
+	Short: "Uninstalls a plugin",
+	Long:  `The uninstall command removes a plugin from the plugins directory.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pluginName := args[0]
+
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		pluginPath := filepath.Join(homeDir, ".sloth-runner", "plugins", pluginName)
+
+		if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+			return fmt.Errorf("plugin '%s' is not installed", pluginName)
+		}
+
+		cmd.Printf("Uninstalling plugin '%s'...\n", pluginName)
+		if err := os.RemoveAll(pluginPath); err != nil {
+			return fmt.Errorf("failed to remove plugin directory: %w", err)
+		}
+		cmd.Printf("Plugin '%s' uninstalled successfully.\n", pluginName)
+
+		return nil
+	},
+}
+
 var enableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Starts the sloth-runner scheduler in the background",
 	Long: `The enable command starts the sloth-runner scheduler as a persistent background process.
 It will monitor and execute tasks defined in the scheduler configuration file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pidFile := filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid") // Local pidFile
 		// Check if scheduler is already running
-		if _, err := os.Stat(schedulerPIDFile); err == nil {
-			pidBytes, err := ioutil.ReadFile(schedulerPIDFile)
+		if _, err := os.Stat(pidFile); err == nil {
+			pidBytes, err := ioutil.ReadFile(pidFile)
 			if err == nil {
 				pid, _ := strconv.Atoi(string(pidBytes))
 				if process, err := os.FindProcess(pid); err == nil {
 					if err := processSignal(process, syscall.Signal(0)); err == nil {
-						fmt.Printf("Scheduler is already running with PID %d.\n", pid)
+						cmd.Printf("Scheduler is already running with PID %d.\n", pid)
 						return nil
 					}
 				}
 			}
 			// PID file exists but process is not running, clean up
-			os.Remove(schedulerPIDFile)
+			os.Remove(pidFile)
 		}
 
-		fmt.Println("Starting sloth-runner scheduler in background...")
+		cmd.Println("Starting sloth-runner scheduler in background...")
 
 		// Re-execute the current binary in background with a special flag
 		command := execCommand(os.Args[0], "--run-as-scheduler", "--scheduler-config", schedulerConfigPath)
@@ -511,8 +648,8 @@ It will monitor and execute tasks defined in the scheduler configuration file.`,
 			return fmt.Errorf("failed to write PID file: %w", err)
 		}
 
-		fmt.Printf("Scheduler started with PID %d. Logs will be redirected to stdout/stderr of the background process.\n", command.Process.Pid)
-		fmt.Printf("To stop the scheduler, run: sloth-runner scheduler disable\n")
+		cmd.Printf("Scheduler started with PID %d. Logs will be redirected to stdout/stderr of the background process.\n", command.Process.Pid)
+		cmd.Printf("To stop the scheduler, run: sloth-runner scheduler disable\n")
 		return nil
 	},
 }
@@ -522,14 +659,15 @@ var disableCmd = &cobra.Command{
 	Short: "Stops the running sloth-runner scheduler",
 	Long:  `The disable command stops the background sloth-runner scheduler process.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pidBytes, err := ioutil.ReadFile(schedulerPIDFile)
+		pidFile := filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid") // Local pidFile
+		pidBytes, err := ioutil.ReadFile(pidFile)
 		if err != nil {
 			return fmt.Errorf("scheduler PID file not found or readable. Is the scheduler running? %w", err)
 		}
 
 		pid, err := strconv.Atoi(string(pidBytes))
 		if err != nil {
-			return fmt.Errorf("invalid PID in file %s: %w", schedulerPIDFile, err)
+			return fmt.Errorf("invalid PID in file %s: %w", pidFile, err)
 		}
 
 		process, err := osFindProcess(pid)
@@ -551,11 +689,11 @@ var disableCmd = &cobra.Command{
 		}
 
 		// Remove PID file
-		if err := os.Remove(schedulerPIDFile); err != nil {
-			fmt.Printf("Warning: Failed to remove PID file %s: %v\n", schedulerPIDFile, err)
+		if err := os.Remove(pidFile); err != nil {
+			cmd.Printf("Warning: Failed to remove PID file %s: %v\n", pidFile, err)
 		}
 
-		fmt.Printf("Scheduler with PID %d stopped successfully.\n", pid)
+		cmd.Printf("Scheduler with PID %d stopped successfully.\n", pid)
 		return nil
 	},
 }
@@ -567,6 +705,12 @@ var listScheduledCmd = &cobra.Command{
 	Short: "Lists all configured scheduled tasks",
 	Long:  `The list command displays all tasks defined in the scheduler configuration file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SetOut(cmd.OutOrStdout()) // Add this line
+		cmd.SetErr(cmd.ErrOrStderr()) // Add this line
+		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
+		pterm.SetDefaultOutput(cmd.OutOrStdout())
+		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
+		defer func() { pterm.SetDefaultOutput(os.Stdout) }()
 		sched := scheduler.NewScheduler(schedulerConfigPath)
 		if err := sched.LoadConfig(); err != nil {
 			return fmt.Errorf("failed to load scheduler config: %w", err)
@@ -595,6 +739,10 @@ var deleteScheduledCmd = &cobra.Command{
 	Long:  `The delete command removes a specific scheduled task from the scheduler configuration file.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SetOut(cmd.OutOrStdout()) // Add this line
+		cmd.SetErr(cmd.ErrOrStderr()) // Add this line
+		// pterm.DefaultLogger.Writer = cmd.OutOrStdout() // Reverted
+		// defer func() { pterm.DefaultLogger.Writer = os.Stdout }() // Reverted
 		taskName := args[0]
 
 		sched := scheduler.NewScheduler(schedulerConfigPath)
@@ -611,7 +759,7 @@ var deleteScheduledCmd = &cobra.Command{
 		for _, task := range sched.Config().ScheduledTasks {
 			if task.Name == taskName {
 				found = true
-				fmt.Printf("Deleting scheduled task '%s'...\n", taskName)
+				cmd.Printf("Deleting scheduled task '%s'...\n", taskName)
 			} else {
 				updatedTasks = append(updatedTasks, task)
 			}
@@ -626,7 +774,7 @@ var deleteScheduledCmd = &cobra.Command{
 			return fmt.Errorf("failed to save updated scheduler config: %w", err)
 		}
 
-		fmt.Printf("Scheduled task '%s' deleted successfully. Please restart the scheduler for changes to take effect.\n", taskName)
+		cmd.Printf("Scheduled task '%s' deleted successfully. Please restart the scheduler for changes to take effect.\n", taskName)
 		return nil
 	},
 }
@@ -653,6 +801,8 @@ var templateListCmd = &cobra.Command{
 	Short: "Lists all available templates",
 	Long:  "Displays a table of all available templates that can be used with the 'new' command.",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
+		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 		fmt.Fprintln(w, "TEMPLATE NAME\tDESCRIPTION")
 		fmt.Fprintln(w, "-------------\t-----------")
@@ -673,6 +823,8 @@ You can choose from different templates and specify an output file.
 Run 'sloth-runner template list' to see all available templates.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
+		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
 		groupName := args[0]
 		sanitizedGroupName := strings.ReplaceAll(groupName, " ", "-")
 
@@ -718,6 +870,12 @@ var runCmd = &cobra.Command{
 	Long: `The run command executes tasks defined in a Lua template file.
 You can specify the file, environment variables, and target specific tasks or groups.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SetOut(cmd.OutOrStdout()) // Add this line
+		cmd.SetErr(cmd.ErrOrStderr()) // Add this line
+		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
+		pterm.SetDefaultOutput(cmd.OutOrStdout()) // Add this line
+		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
+		defer func() { pterm.SetDefaultOutput(os.Stdout) }() // Add this line
 		L := lua.NewState()
 		defer L.Close()
 
@@ -771,38 +929,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 		luainterface.OpenParallel(L, tr)
 		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {
-			return fmt.Errorf("error running tasks: %w", err)
-		}
-
-		if returnOutput {
-			finalOutputs := make(map[string]interface{})
-			for _, taskName := range targetTasks {
-				if output, ok := tr.Outputs[taskName]; ok {
-					finalOutputs[taskName] = output
-				}
-			}
-
-			// Merge exported values, overwriting any task outputs with the same key
-			for key, value := range tr.Exports {
-				finalOutputs[key] = value
-			}
-
-			var outputToMarshal interface{}
-			if len(targetTasks) == 1 && len(finalOutputs) == 1 {
-				if val, ok := finalOutputs[targetTasks[0]]; ok {
-					outputToMarshal = val
-				} else {
-					// If the only task has no output but there are exports, marshal the whole map
-					outputToMarshal = finalOutputs
-				}
-			} else {
-				outputToMarshal = finalOutputs
-			}
-			jsonOutput, err := json.Marshal(outputToMarshal)
-			if err != nil {
-				return fmt.Errorf("error marshaling final task output to JSON: %w", err)
-			}
-			fmt.Println(string(jsonOutput))
+			return err // Directly return the error
 		}
 		return nil
 	},
@@ -865,6 +992,8 @@ var testCmd = &cobra.Command{
 	Long: `The test command runs a specified Lua test file against a workflow.
 Inside the test file, you can use the 'test' and 'assert' modules to validate task behaviors.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
+		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
 		testFilePath, _ := cmd.Flags().GetString("file")
 		workflowFilePath, _ := cmd.Flags().GetString("workflow")
 
@@ -966,9 +1095,13 @@ func checkDependencies() error {
 }
 
 func init() {
+	rootCmd.SetOut(os.Stdout) // Add this line
+	rootCmd.SetErr(os.Stderr) // Add this line
+	rootCmd.SilenceErrors = false // Add this line
+	rootCmd.SilenceUsage = false // Add this line
+
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
-	templateCmd.AddCommand(templateListCmd)
 	rootCmd.AddCommand(newCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(listCmd)
@@ -1014,14 +1147,22 @@ func init() {
 	testCmd.MarkFlagRequired("workflow")
 	replCmd.Flags().StringP("file", "f", "", "Path to a Lua workflow file to load into the REPL session")
 
+	rootCmd.AddCommand(pluginCmd)
+	pluginCmd.AddCommand(installCmd)
+	pluginCmd.AddCommand(listPluginsCmd)
+	pluginCmd.AddCommand(uninstallPluginCmd)
+
 	schedulerCmd.PersistentFlags().StringVarP(&schedulerConfigPath, "scheduler-config", "c", "scheduler.yaml", "Path to the scheduler configuration file")
 	rootCmd.PersistentFlags().BoolVar(&runAsScheduler, "run-as-scheduler", false, "(Internal) Do not use directly. Runs the process as a background scheduler.")
+	schedulerPIDFile = filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid")
+
+	if testOutputBuffer != nil {
+		pterm.DefaultLogger.Writer = testOutputBuffer
+		slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+	}
 }
 
-func main() {
-	// Use pterm's slog handler to make logs coexist with the live dashboard
-	slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
-
+func Execute() error {
 	rootCmd.SilenceUsage = true // Suppress help on execution errors
 
 	if runAsScheduler {
@@ -1029,18 +1170,29 @@ func main() {
 		sched := scheduler.NewScheduler(schedulerConfigPath)
 		if err := sched.LoadConfig(); err != nil {
 			slog.Error("failed to load scheduler config", "err", err)
-			os.Exit(1)
+			return err // Return error instead of os.Exit(1)
 		}
 		if err := sched.Start(); err != nil {
 			slog.Error("failed to start scheduler", "err", err)
-			os.Exit(1)
+			return err // Return error instead of os.Exit(1)
 		}
 
 		// Keep the scheduler running until terminated
 		select {}
 	}
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
+		slog.Error("DEBUG: rootCmd.Execute() returned error", "err", err)
+	}
+	return err
+}
+
+func main() {
+	// Use pterm's slog handler to make logs coexist with the live dashboard
+	slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+
+	if err := Execute(); err != nil {
 		slog.Error("execution failed", "err", err)
 		os.Exit(1)
 	}

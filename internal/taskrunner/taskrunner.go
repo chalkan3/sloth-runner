@@ -22,6 +22,13 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+var surveyAskOne = survey.AskOne
+
+// SetSurveyAskOne allows tests to override the survey.AskOne function
+func SetSurveyAskOne(f func(p survey.Prompt, response interface{}, opts ...survey.AskOpt) error) {
+	surveyAskOne = f
+}
+
 // executeShellCondition executes a shell command and returns true if it succeeds (exit code 0).
 func executeShellCondition(command string) (bool, error) {
 	if command == "" {
@@ -404,7 +411,7 @@ func (tr *TaskRunner) Run() error {
 					Options: []string{"run", "skip", "abort", "continue"},
 					Default: "run",
 				}
-				survey.AskOne(prompt, &action)
+				surveyAskOne(prompt, &action)
 
 				switch action {
 				case "skip":
