@@ -4,7 +4,7 @@
 
 A flexible and extensible task runner application written in Go, powered by Lua scripting. `sloth-runner` allows you to define complex workflows, manage task dependencies, and integrate with external systems, all through simple Lua scripts.
 
-[![Go CI](https://github.com/chalkan3/sloth-runner/actions/workflows/go.yml/badge.svg)](https://github.com/chalkan3/sloth-runner/actions/workflows/go.yml)
+[![Go CI](https://github.com/chalkan3/sloth-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/chalkan3/sloth-runner/actions/workflows/ci.yml)
 
 ---
 

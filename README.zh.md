@@ -4,7 +4,7 @@
 
 一个用 Go 编写、由 Lua 脚本驱动的灵活且可扩展的任务运行器应用程序。`sloth-runner` 允许您通过简单的 Lua 脚本定义复杂的工作流、管理任务依赖关系以及与外部系统集成。
 
-[![Go CI](https://github.com/chalkan3/sloth-runner/actions/workflows/go.yml/badge.svg)](https://github.com/chalkan3/sloth-runner/actions/workflows/go.yml)
+[![Go CI](https://github.com/chalkan3/sloth-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/chalkan3/sloth-runner/actions/workflows/ci.yml)
 
 ---
 
