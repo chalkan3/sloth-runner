@@ -9,6 +9,7 @@
 *   [任务调度器](./scheduler.md)
 *   [快速入门](./getting-started.md)
 *   [核心概念](./core-concepts.md)
+*   [分布式任务执行](./distributed.md)
 *   [CLI 命令](./CLI.md)
 *   [交互式 REPL](./repl.md)
 *   **内置模块：**

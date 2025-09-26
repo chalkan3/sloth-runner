@@ -8,6 +8,7 @@ Here you will find detailed guides, API references, and practical examples to he
 
 *   [Getting Started](./getting-started.md)
 *   [Core Concepts](./core-concepts.md)
+*   [Distributed Task Execution](./distributed.md)
 *   [CLI Commands](./CLI.md)
 *   [Interactive REPL](./repl.md)
 *   **Built-in Modules:**

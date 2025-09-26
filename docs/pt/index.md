@@ -8,6 +8,7 @@ Aqui você encontrará guias detalhados, referências de API e exemplos prático
 
 *   [Agendador de Tarefas](./scheduler.md)
 *   [Início Rápido](./getting-started.md)
+*   [Execução de Tarefas Distribuídas](./distributed.md)
 *   [Conceitos Essenciais](./core-concepts.md)
 *   [Comandos da CLI](./CLI.md)
 *   [REPL Interativo](./repl.md)

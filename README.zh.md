@@ -22,6 +22,7 @@
     *   **`log` 模块:** 以不同的严重级别（info、warn、error、debug）记录消息。
     *   **`salt` 模块:** 直接执行 SaltStack 命令（`salt`、`salt-call`）。
     *   **`gcp` 模块:** 执行谷歌云 (`gcloud`) 命令行指令。
+*   **🌐 分布式任务执行:** 在远程代理上运行任务，实现可扩展的分布式工作流。
 *   **⏰ 任务调度器:** 使用 cron 语法自动执行您的 Lua 任务，作为持久的后台进程运行。
 *   **📦 任务产物管理:** 自动收集和存储任务生成的文件和目录，用于审计和重用。
 *   **📝 `values.yaml` 集成:** 通过 `values.yaml` 文件将配置值传递给您的 Lua 任务，类似于 Helm。
@@ -288,6 +289,19 @@ TaskDefinitions = {
 **标志:**
 
 *   `-f, --file string`: 要加载到 REPL 会话中的 Lua 工作流文件路径
+
+### `sloth-runner agent`
+
+以代理模式启动 sloth-runner。
+
+**用法:** `sloth-runner agent [flags]`
+
+**描述:**
+`agent` 命令将 sloth-runner 作为后台代理启动，可以远程执行任务。
+
+**标志:**
+
+*   `-p, --port int`: 代理监听的端口 (默认: 50051)
 
 ### `sloth-runner version`
 
