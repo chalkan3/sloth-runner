@@ -408,18 +408,12 @@ The delete command removes a specific scheduled task from the scheduler configur
 
 *   `-c, --scheduler-config string`: Path to the scheduler configuration file (default: "scheduler.yaml")
 
-### `sloth-runner agent`
+### Agent Commands
 
-Starts the sloth-runner in agent mode.
-
-**Usage:** `sloth-runner agent [flags]`
-
-**Description:**
-The agent command starts the sloth-runner as a background agent that can execute tasks remotely.
-
-**Flags:**
-
-*   `-p, --port int`: The port for the agent to listen on (default: 50051)
+*   `sloth-runner agent start [-p <port>]`: Starts the sloth-runner in agent mode.
+*   `sloth-runner agent list`: Lists all registered agents.
+*   `sloth-runner agent run <agent_name> <command>`: Executes a command on a remote agent.
+*   `sloth-runner agent stop <agent_name>`: Stops a remote agent.
 
 ### `sloth-runner version`
 

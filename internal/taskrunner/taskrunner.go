@@ -195,17 +195,42 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession, groupName string) (taskErr error) {
 	startTime := time.Now()
 
-	if t.Agent != "" {
-		group := tr.TaskGroups[groupName]
-		agent, ok := group.Agents[t.Agent]
-		if !ok {
-			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("agent '%s' not found in task group", t.Agent)}
-		}
+	var agentAddress string
 
+	// Determine agent address from task's DelegateTo or group's DelegateTo
+	if t.DelegateTo != nil {
+		switch v := t.DelegateTo.(type) {
+		case string:
+			agentAddress = v // Direct address
+		case map[string]interface{}:
+			if addr, ok := v["address"].(string); ok {
+				agentAddress = addr
+			} else {
+				return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid agent definition in task delegate_to: missing address")}
+			}
+		default:
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid type for task delegate_to: %T", v)}
+		}
+	} else if tr.TaskGroups[groupName].DelegateTo != nil {
+		switch v := tr.TaskGroups[groupName].DelegateTo.(type) {
+		case string:
+			agentAddress = v // Direct address
+		case map[string]interface{}:
+			if addr, ok := v["address"].(string); ok {
+				agentAddress = addr
+			} else {
+				return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid agent definition in group delegate_to: missing address")}
+			}
+		default:
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("invalid type for group delegate_to: %T", v)}
+		}
+	}
+
+	if agentAddress != "" {
 		// Connect to the agent
-		conn, err := grpc.Dial(agent.Address, grpc.WithInsecure())
+		conn, err := grpc.Dial(agentAddress, grpc.WithInsecure())
 		if err != nil {
-			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to connect to agent: %w", err)}
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to connect to agent %s: %w", agentAddress, err)}
 		}
 		defer conn.Close()
 		c := pb.NewAgentClient(conn)
@@ -220,20 +245,20 @@ func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDepen
 		r, err := c.ExecuteTask(ctx, &pb.ExecuteTaskRequest{
 			TaskName:    t.Name,
 			TaskGroup:   groupName,
-			LuaScript:   tr.L.GetGlobal("__LUASCRIPT__").String(),
+			LuaScript:   tr.LuaScript,
 			Workspace:   buf.Bytes(),
 		})
 		if err != nil {
-			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute task on agent: %w", err)}
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute task on agent %s: %w", agentAddress, err)}
 		}
 
 		if !r.GetSuccess() {
-			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("task failed on agent: %s", r.GetOutput())}
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("task failed on agent %s: %s", agentAddress, r.GetOutput())}
 		}
 
 		// Extract the updated workspace
 		if err := extractTar(bytes.NewReader(r.GetWorkspace()), session.Workdir); err != nil {
-			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to extract updated workspace: %w", err)}
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to extract updated workspace from agent %s: %w", agentAddress, err)}
 		}
 
 		return nil

@@ -46,8 +46,8 @@ var replCmd = &cobra.Command{
 	Use:   "repl",
 	Short: "Starts an interactive REPL session",
 	Long: `The repl command starts an interactive Read-Eval-Print Loop that allows you
-to execute Lua code and interact with all the built-in sloth-runner modules.
-You can optionally load a workflow file to have its context available.`,
+	to execute Lua code and interact with all the built-in sloth-runner modules.
+	You can optionally load a workflow file to have its context available.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		workflowFile, _ := cmd.Flags().GetString("file")
 		repl.Start(workflowFile)
@@ -79,7 +79,7 @@ TaskDefinitions = {
       {
         name = "hello_task",
         description = "An example task. Modify or add new tasks here.",
-        command = function(params)
+        command = function(params) 
           local workdir = params.workdir
           log.info("Running example task for group {{.GroupName}} in: " .. workdir)
           local stdout, stderr, err = exec.command("echo 'Hello from sloth-runner!'")
@@ -468,13 +468,13 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 		}
 
 		// Process values.yaml as a Go template
-		tmpl, err := template.New("values").Parse(string(valuesContent))
+	tmpl, err := template.New("values").Parse(string(valuesContent))
 		if err != nil {
 			return nil, "", fmt.Errorf("error parsing values template: %w", err)
 		}
 
 		// Create a map of environment variables to pass to the template
-		envMap := make(map[string]string)
+	envMap := make(map[string]string)
 		for _, e := range os.Environ() {
 			pair := strings.SplitN(e, "=", 2)
 			envMap[pair[0]] = pair[1]
@@ -502,7 +502,7 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 var schedulerCmd = &cobra.Command{
 	Use:   "scheduler",
 	Short: "Manages the background task scheduler",
-	Long:  `The scheduler command provides subcommands to enable and disable the sloth-runner background task scheduler.`,
+	Long:  `The scheduler command provides subcommands to enable and disable the sloth-runner background task scheduler.`, 
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -511,7 +511,7 @@ var schedulerCmd = &cobra.Command{
 var pluginCmd = &cobra.Command{
 	Use:   "plugin",
 	Short: "Manages plugins",
-	Long:  `The plugin command provides subcommands to install, list, and uninstall plugins.`,
+	Long:  `The plugin command provides subcommands to install, list, and uninstall plugins.`, 
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -520,7 +520,7 @@ var pluginCmd = &cobra.Command{
 var installCmd = &cobra.Command{
 	Use:   "install <url>",
 	Short: "Installs a plugin from a git repository",
-	Long:  `The install command clones a git repository from the given URL into the plugins directory.`,
+	Long:  `The install command clones a git repository from the given URL into the plugins directory.`, 
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pluginURL := args[0]
@@ -558,7 +558,7 @@ var installCmd = &cobra.Command{
 var listPluginsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all installed plugins",
-	Long:  `The list command shows all plugins that are currently installed in the plugins directory.`,
+	Long:  `The list command shows all plugins that are currently installed in the plugins directory.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -589,7 +589,7 @@ var listPluginsCmd = &cobra.Command{
 var uninstallPluginCmd = &cobra.Command{
 	Use:   "uninstall <plugin-name>",
 	Short: "Uninstalls a plugin",
-	Long:  `The uninstall command removes a plugin from the plugins directory.`,
+	Long:  `The uninstall command removes a plugin from the plugins directory.`, 
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pluginName := args[0]
@@ -618,7 +618,7 @@ var enableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Starts the sloth-runner scheduler in the background",
 	Long: `The enable command starts the sloth-runner scheduler as a persistent background process.
-It will monitor and execute tasks defined in the scheduler configuration file.`,
+It will monitor and execute tasks defined in the scheduler configuration file.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pidFile := filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid") // Local pidFile
 		// Check if scheduler is already running
@@ -663,7 +663,7 @@ It will monitor and execute tasks defined in the scheduler configuration file.`,
 var disableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Stops the running sloth-runner scheduler",
-	Long:  `The disable command stops the background sloth-runner scheduler process.`,
+	Long:  `The disable command stops the background sloth-runner scheduler process.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pidFile := filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid") // Local pidFile
 		pidBytes, err := ioutil.ReadFile(pidFile)
@@ -709,7 +709,7 @@ var disableCmd = &cobra.Command{
 var listScheduledCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all configured scheduled tasks",
-	Long:  `The list command displays all tasks defined in the scheduler configuration file.`,
+	Long:  `The list command displays all tasks defined in the scheduler configuration file.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SetOut(cmd.OutOrStdout()) // Add this line
 		cmd.SetErr(cmd.ErrOrStderr()) // Add this line
@@ -742,7 +742,7 @@ var listScheduledCmd = &cobra.Command{
 var deleteScheduledCmd = &cobra.Command{
 	Use:   "delete <task-name>",
 	Short: "Deletes a scheduled task from the configuration",
-	Long:  `The delete command removes a specific scheduled task from the scheduler configuration file.`,
+	Long:  `The delete command removes a specific scheduled task from the scheduler configuration file.`, 
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SetOut(cmd.OutOrStdout()) // Add this line
@@ -789,8 +789,8 @@ var rootCmd = &cobra.Command{
 	Use:   "sloth-runner",
 	Short: "A flexible sloth-runner with Lua scripting capabilities",
 	Long: `sloth-runner is a command-line tool that allows you to define and execute
-tasks using Lua scripts. It supports pipelines, workflows, dynamic task generation,
-and output manipulation.`,
+	tasks using Lua scripts. It supports pipelines, workflows, dynamic task generation,
+	and output manipulation.`, 
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -805,7 +805,7 @@ var templateCmd = &cobra.Command{
 var templateListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available templates",
-	Long:  "Displays a table of all available templates that can be used with the 'new' command.",
+	Long:  "Displays a table of all available templates that can be used with the 'new' command.", 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
 		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
@@ -825,8 +825,8 @@ var newCmd = &cobra.Command{
 	Use:   "new <group-name>",
 	Short: "Generates a new task definition file from a template",
 	Long: `The new command creates a boilerplate Lua task definition file.
-You can choose from different templates and specify an output file.
-Run 'sloth-runner template list' to see all available templates.`,
+	You can choose from different templates and specify an output file.
+	Run 'sloth-runner template list' to see all available templates.`, 
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
@@ -880,7 +880,7 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Executes tasks defined in a Lua template file",
 	Long: `The run command executes tasks defined in a Lua template file.
-You can specify the file, environment variables, and target specific tasks or groups.`,
+	You can specify the file, environment variables, and target specific tasks or groups.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SetOut(cmd.OutOrStdout()) // Add this line
 		cmd.SetErr(cmd.ErrOrStderr()) // Add this line
@@ -950,7 +950,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists all available task groups and tasks",
-	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`,
+	Long:  `The list command displays all task groups and their respective tasks, along with their descriptions and dependencies.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		L := lua.NewState()
 		defer L.Close()
@@ -985,7 +985,7 @@ var listCmd = &cobra.Command{
 var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validates the syntax and structure of a Lua task file",
-	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`,
+	Long:  `The validate command checks a Lua task file for syntax errors and ensures that the TaskDefinitions table is correctly structured.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		L := lua.NewState()
 		defer L.Close()
@@ -1002,7 +1002,7 @@ var testCmd = &cobra.Command{
 	Use:   "test -w <workflow-file> -f <test-file>",
 	Short: "Executes a Lua test file for a task workflow",
 	Long: `The test command runs a specified Lua test file against a workflow.
-Inside the test file, you can use the 'test' and 'assert' modules to validate task behaviors.`,
+	Inside the test file, you can use the 'test' and 'assert' modules to validate task behaviors.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultLogger.Writer = cmd.OutOrStdout()
 		defer func() { pterm.DefaultLogger.Writer = os.Stdout }()
@@ -1059,13 +1059,13 @@ Inside the test file, you can use the 'test' and 'assert' modules to validate ta
 var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Run checks for the environment and configuration",
-	Long:  "Provides commands to check for dependencies, configuration, and other environment requirements.",
+	Long:  "Provides commands to check for dependencies, configuration, and other environment requirements.", 
 }
 
 var dependenciesCmd = &cobra.Command{
 	Use:   "dependencies",
 	Short: "Checks for required external CLI tools",
-	Long:  "Verifies that all external command-line tools used by the various modules (e.g., docker, aws, doctl) are installed and available in the system's PATH.",
+	Long:  "Verifies that all external command-line tools used by the various modules (e.g., docker, aws, doctl) are installed and available in the system's PATH.", 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return checkDependencies()
 	},
@@ -1108,16 +1108,98 @@ func checkDependencies() error {
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
+	Short: "Manages sloth-runner agents",
+	Long:  `The agent command provides subcommands to start, stop, list, and manage sloth-runner agents.`, 
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
+var agentStartCmd = &cobra.Command{
+	Use:   "start",
 	Short: "Starts the sloth-runner in agent mode",
-	Long:  `The agent command starts the sloth-runner as a background agent that can execute tasks remotely.`,
+	Long:  `The agent start command starts the sloth-runner as a background agent that can execute tasks remotely.`, 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
+		masterAddr, _ := cmd.Flags().GetString("master")
+		agentName, _ := cmd.Flags().GetString("name")
+		daemon, _ := cmd.Flags().GetBool("daemon")
+
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get user home directory: %w", err)
+		}
+
+		if daemon {
+			pidFile := filepath.Join(homeDir, ".projects", "task-runner", fmt.Sprintf("sloth-runner-agent-%s.pid", agentName))
+			if _, err := os.Stat(pidFile); err == nil {
+				pidBytes, err := ioutil.ReadFile(pidFile)
+				if err == nil {
+					pid, _ := strconv.Atoi(string(pidBytes))
+					if process, err := os.FindProcess(pid); err == nil {
+						if err := processSignal(process, syscall.Signal(0)); err == nil {
+							cmd.Printf("Agent %s is already running with PID %d.\n", agentName, pid)
+							return nil
+						}
+					}
+				}
+				os.Remove(pidFile)
+			}
+
+			command := execCommand(os.Args[0], "agent", "start", "--port", strconv.Itoa(port), "--name", agentName, "--master", masterAddr)
+			setSysProcAttr(command)
+			stdoutFile, err := os.OpenFile(fmt.Sprintf("agent-%s.log", agentName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open agent log for stdout: %w", err)
+			}
+			defer stdoutFile.Close()
+			command.Stdout = stdoutFile
+
+			stderrFile, err := os.OpenFile(fmt.Sprintf("agent-%s.log", agentName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open agent log for stderr: %w", err)
+			}
+			defer stderrFile.Close()
+			command.Stderr = stderrFile
+
+			if err := command.Start(); err != nil {
+				return fmt.Errorf("failed to start agent process: %w", err)
+			}
+
+			if err := ioutil.WriteFile(pidFile, []byte(strconv.Itoa(command.Process.Pid)), 0644); err != nil {
+				return fmt.Errorf("failed to write PID file: %w", err)
+			}
+
+			cmd.Printf("Agent %s started with PID %d.\n", agentName, command.Process.Pid)
+			return nil
+		}
+
 		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err != nil {
 			return fmt.Errorf("failed to listen: %v", err)
 		}
+
+		if masterAddr != "" {
+			conn, err := grpc.Dial(masterAddr, grpc.WithInsecure())
+			if err != nil {
+				return fmt.Errorf("failed to connect to master: %v", err)
+			}
+			defer conn.Close()
+
+			registryClient := pb.NewAgentRegistryClient(conn)
+			_, err = registryClient.RegisterAgent(context.Background(), &pb.RegisterAgentRequest{
+				AgentName:    agentName,
+				AgentAddress: lis.Addr().String(),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to register with master: %v", err)
+			}
+			slog.Info(fmt.Sprintf("Agent registered with master at %s", masterAddr))
+		}
+
 		s := grpc.NewServer()
-		pb.RegisterAgentServer(s, &agentServer{})
+		server := &agentServer{grpcServer: s}
+		pb.RegisterAgentServer(s, server)
 		slog.Info(fmt.Sprintf("Agent listening at %v", lis.Addr()))
 		if err := s.Serve(lis); err != nil {
 			return fmt.Errorf("failed to serve: %v", err)
@@ -1126,8 +1208,120 @@ var agentCmd = &cobra.Command{
 	},
 }
 
+var agentRunCmd = &cobra.Command{
+	Use:   "run <agent_name> <command>",
+	Short: "Executes a command on a remote agent",
+	Long:  `Executes an arbitrary shell command on a specified remote agent.`, 
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		agentName := args[0]
+		command := args[1]
+
+		conn, err := grpc.Dial("localhost:50053", grpc.WithInsecure()) // Master's AgentRegistry address
+		if err != nil {
+			return fmt.Errorf("failed to connect to master: %v", err)
+		}
+		defer conn.Close()
+
+		registryClient := pb.NewAgentRegistryClient(conn)
+		resp, err := registryClient.ExecuteCommand(context.Background(), &pb.ExecuteCommandRequest{
+			AgentName: agentName,
+			Command:   command,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to execute command on agent %s: %v", agentName, err)
+		}
+
+		if !resp.GetSuccess() {
+			return fmt.Errorf("command failed on agent %s: %s (stderr: %s, error: %s)", agentName, resp.GetStdout(), resp.GetStderr(), resp.GetError())
+		}
+
+		fmt.Printf("Command executed successfully on agent %s:\nStdout:\n%s\nStderr:\n%s\n", agentName, resp.GetStdout(), resp.GetStderr())
+		return nil
+	},
+}
+
+var agentListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Lists all registered agents",
+	Long:  `Lists all agents that are currently registered with the master.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		debug, _ := cmd.Flags().GetBool("debug")
+		if debug {
+			pterm.DefaultLogger.Level = pterm.LogLevelDebug
+			slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+			fmt.Println("Debug mode enabled for agent list command.")
+		}
+		conn, err := grpc.Dial("localhost:50053", grpc.WithInsecure()) // Master's AgentRegistry address
+		if err != nil {
+			fmt.Printf("Error connecting to master: %v\n", err)
+			return fmt.Errorf("failed to connect to master: %v", err)
+		}
+		defer conn.Close()
+		fmt.Printf("Connected to master: %v\n", conn)
+
+		registryClient := pb.NewAgentRegistryClient(conn)
+		fmt.Printf("Registry client created: %v\n", registryClient)
+
+		resp, err := registryClient.ListAgents(context.Background(), &pb.ListAgentsRequest{})
+		if err != nil {
+			return fmt.Errorf("failed to list agents: %v", err)
+		}
+
+		if len(resp.GetAgents()) == 0 {
+			fmt.Println("No agents registered.")
+			return nil
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+		fmt.Fprintln(w, "AGENT NAME\tADDRESS")
+		fmt.Fprintln(w, "------------\t----------")
+		for _, agent := range resp.GetAgents() {
+			fmt.Fprintf(w, "%s\t%s\n", agent.GetAgentName(), agent.GetAgentAddress())
+		}
+		return w.Flush()
+	},
+}
+
+var agentStopCmd = &cobra.Command{
+	Use:   "stop <agent_name>",
+	Short: "Stops a remote agent",
+	Long:  `Stops a specified remote agent gracefully.`, 
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		agentName := args[0]
+
+		conn, err := grpc.Dial("localhost:50053", grpc.WithInsecure()) // Master's AgentRegistry address
+		if err != nil {
+			return fmt.Errorf("failed to connect to master: %v", err)
+		}
+		defer conn.Close()
+
+		registryClient := pb.NewAgentRegistryClient(conn)
+		_, err = registryClient.StopAgent(context.Background(), &pb.StopAgentRequest{
+			AgentName: agentName,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to stop agent %s: %v", agentName, err)
+		}
+
+		fmt.Printf("Stop signal sent to agent %s successfully.\n", agentName)
+		return nil
+	},
+}
+
 type agentServer struct {
 	pb.UnimplementedAgentServer
+	grpcServer *grpc.Server
+}
+
+func (s *agentServer) Shutdown(ctx context.Context, in *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	slog.Info("Shutting down agent server")
+	go func() {
+		time.Sleep(1 * time.Second)
+		s.grpcServer.GracefulStop()
+	}()
+	return &pb.ShutdownResponse{}, nil
 }
 
 func (s *agentServer) ExecuteTask(ctx context.Context, in *pb.ExecuteTaskRequest) (*pb.ExecuteTaskResponse, error) {
@@ -1238,13 +1432,80 @@ func extractTar(reader io.Reader, dest string) error {
 	}
 }
 
+var masterCmd = &cobra.Command{
+	Use:   "master",
+	Short: "Starts the sloth-runner master server",
+	Long:  `The master command starts the sloth-runner master server, which includes the agent registry.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, _ := cmd.Flags().GetInt("port")
+		daemon, _ := cmd.Flags().GetBool("daemon")
+
+		if daemon {
+			pidFile := filepath.Join(".", "sloth-runner-master.pid")
+			if _, err := os.Stat(pidFile); err == nil {
+				pidBytes, err := ioutil.ReadFile(pidFile)
+				if err == nil {
+					pid, _ := strconv.Atoi(string(pidBytes))
+					if process, err := os.FindProcess(pid); err == nil {
+						if err := processSignal(process, syscall.Signal(0)); err == nil {
+							cmd.Printf("Master server is already running with PID %d.\n", pid)
+							return nil
+						}
+					}
+				}
+				os.Remove(pidFile)
+			}
+
+			command := execCommand(os.Args[0], "master", "--port", strconv.Itoa(port))
+			setSysProcAttr(command)
+			stdoutFile, err := os.OpenFile("master.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open master.log for stdout: %w", err)
+			}
+			defer stdoutFile.Close()
+			command.Stdout = stdoutFile
+
+			stderrFile, err := os.OpenFile("master.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open master.log for stderr: %w", err)
+			}
+			defer stderrFile.Close()
+			command.Stderr = stderrFile
+
+			if err := command.Start(); err != nil {
+				return fmt.Errorf("failed to start master server process: %w", err)
+			}
+
+			if err := ioutil.WriteFile(pidFile, []byte(strconv.Itoa(command.Process.Pid)), 0644); err != nil {
+				return fmt.Errorf("failed to write PID file: %w", err)
+			}
+
+			cmd.Printf("Master server started with PID %d.\n", command.Process.Pid)
+			return nil
+		}
+
+		return globalAgentRegistry.Start(port)
+	},
+}
+
+var globalAgentRegistry *agentRegistryServer
+
 func init() {
 	rootCmd.SetOut(os.Stdout) // Add this line
 	rootCmd.SetErr(os.Stderr) // Add this line
 	rootCmd.SilenceErrors = false // Add this line
 	rootCmd.SilenceUsage = false // Add this line
 
-	agentCmd.Flags().IntP("port", "p", 50051, "The port for the agent to listen on")
+	globalAgentRegistry = newAgentRegistryServer()
+
+	rootCmd.AddCommand(masterCmd)
+	masterCmd.Flags().IntP("port", "p", 50053, "The port for the master to listen on")
+	masterCmd.Flags().Bool("daemon", false, "Run the master server as a daemon")
+
+	agentStartCmd.Flags().IntP("port", "p", 50051, "The port for the agent to listen on")
+	agentStartCmd.Flags().String("master", "", "The address of the master server to register with")
+	agentStartCmd.Flags().String("name", "", "The name of the agent")
+	agentStartCmd.Flags().Bool("daemon", false, "Run the agent as a daemon")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
 	rootCmd.AddCommand(newCmd)
@@ -1252,10 +1513,15 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(testCmd)
-	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(replCmd)
 	rootCmd.AddCommand(schedulerCmd)
+	rootCmd.AddCommand(agentCmd)
+	agentCmd.AddCommand(agentStartCmd)
+	agentCmd.AddCommand(agentRunCmd)
+	agentCmd.AddCommand(agentListCmd)
+	agentCmd.AddCommand(agentStopCmd)
+	agentListCmd.Flags().Bool("debug", false, "Enable debug logging for this command")
 	checkCmd.AddCommand(dependenciesCmd)
 
 	schedulerCmd.AddCommand(enableCmd)
@@ -1300,6 +1566,7 @@ func init() {
 
 	schedulerCmd.PersistentFlags().StringVarP(&schedulerConfigPath, "scheduler-config", "c", "scheduler.yaml", "Path to the scheduler configuration file")
 	rootCmd.PersistentFlags().BoolVar(&runAsScheduler, "run-as-scheduler", false, "(Internal) Do not use directly. Runs the process as a background scheduler.")
+	rootCmd.PersistentFlags().Bool("debug", false, "Enable debug logging")
 	schedulerPIDFile = filepath.Join(filepath.Dir(schedulerConfigPath), "sloth-runner-scheduler.pid")
 
 	if testOutputBuffer != nil {
@@ -1310,6 +1577,10 @@ func init() {
 
 func Execute() error {
 	rootCmd.SilenceUsage = true // Suppress help on execution errors
+
+	// debug, _ := rootCmd.PersistentFlags().GetBool("debug") // Removed as debug is now a local flag	// if debug {
+	// 	pterm.DefaultLogger.Level = pterm.LogLevelDebug
+	// }
 
 	if runAsScheduler {
 		// This is the background scheduler process

@@ -8,11 +8,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// Agent represents a remote agent that can execute tasks.
-type Agent struct {
-	Address string `yaml:"address"`
-}
-
 // Task represents a single unit of work in the runner.
 type Task struct {
 	Name        string
@@ -34,7 +29,7 @@ type Task struct {
 	AbortIf     string
 	AbortIfFunc *lua.LFunction
 	Output      *lua.LTable
-	Agent       string // New field
+	DelegateTo  interface{} // Can be string (agent name) or map (inline agent definition)
 }
 
 // TaskGroup represents a collection of related tasks.
@@ -44,7 +39,7 @@ type TaskGroup struct {
 	Workdir                  string
 	CreateWorkdirBeforeRun   bool
 	CleanWorkdirAfterRunFunc *lua.LFunction
-	Agents                   map[string]Agent `yaml:"agents"` // New field
+	DelegateTo               interface{} `yaml:"delegate_to"` // Can be map[string]Agent or string (default agent)
 }
 
 // TaskResult holds the outcome of a single task execution.

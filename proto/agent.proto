@@ -6,7 +6,13 @@ option go_package = "github.com/chalkan3/sloth-runner/proto";
 
 service Agent {
   rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskResponse);
+  rpc RunCommand(RunCommandRequest) returns (RunCommandResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
+
+message ShutdownRequest {}
+
+message ShutdownResponse {}
 
 message ExecuteTaskRequest {
   string task_name = 1;
@@ -19,4 +25,67 @@ message ExecuteTaskResponse {
   bool success = 1;
   string output = 2;
   bytes workspace = 3;
+}
+
+service AgentRegistry {
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc StopAgent(StopAgentRequest) returns (StopAgentResponse);
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+}
+
+message RegisterAgentRequest {
+  string agent_name = 1;
+  string agent_address = 2;
+}
+
+message RegisterAgentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message AgentInfo {
+  string agent_name = 1;
+  string agent_address = 2;
+  // Add more fields later, e.g., last_heartbeat, status
+}
+
+message ListAgentsRequest {
+  // No fields needed for now
+}
+
+message ListAgentsResponse {
+  repeated AgentInfo agents = 1;
+}
+
+message StopAgentRequest {
+  string agent_name = 1;
+}
+
+message StopAgentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ExecuteCommandRequest {
+  string agent_name = 1;
+  string command = 2;
+}
+
+message ExecuteCommandResponse {
+  bool success = 1;
+  string stdout = 2;
+  string stderr = 3;
+  string error = 4;
+}
+
+message RunCommandRequest {
+  string command = 1;
+}
+
+message RunCommandResponse {
+  bool success = 1;
+  string stdout = 2;
+  string stderr = 3;
+  string error = 4;
 }

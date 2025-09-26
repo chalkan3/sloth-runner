@@ -23,6 +23,8 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentClient interface {
 	ExecuteTask(ctx context.Context, in *ExecuteTaskRequest, opts ...grpc.CallOption) (*ExecuteTaskResponse, error)
+	RunCommand(ctx context.Context, in *RunCommandRequest, opts ...grpc.CallOption) (*RunCommandResponse, error)
+	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
 type agentClient struct {
@@ -42,11 +44,31 @@ func (c *agentClient) ExecuteTask(ctx context.Context, in *ExecuteTaskRequest, o
 	return out, nil
 }
 
+func (c *agentClient) RunCommand(ctx context.Context, in *RunCommandRequest, opts ...grpc.CallOption) (*RunCommandResponse, error) {
+	out := new(RunCommandResponse)
+	err := c.cc.Invoke(ctx, "/agent.Agent/RunCommand", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
+	out := new(ShutdownResponse)
+	err := c.cc.Invoke(ctx, "/agent.Agent/Shutdown", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServer is the server API for Agent service.
 // All implementations must embed UnimplementedAgentServer
 // for forward compatibility
 type AgentServer interface {
 	ExecuteTask(context.Context, *ExecuteTaskRequest) (*ExecuteTaskResponse, error)
+	RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error)
+	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedAgentServer()
 }
 
@@ -56,6 +78,12 @@ type UnimplementedAgentServer struct {
 
 func (UnimplementedAgentServer) ExecuteTask(context.Context, *ExecuteTaskRequest) (*ExecuteTaskResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExecuteTask not implemented")
+}
+func (UnimplementedAgentServer) RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RunCommand not implemented")
+}
+func (UnimplementedAgentServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
 }
 func (UnimplementedAgentServer) mustEmbedUnimplementedAgentServer() {}
 
@@ -88,6 +116,42 @@ func _Agent_ExecuteTask_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Agent_RunCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).RunCommand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.Agent/RunCommand",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).RunCommand(ctx, req.(*RunCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_Shutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShutdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).Shutdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.Agent/Shutdown",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).Shutdown(ctx, req.(*ShutdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Agent_ServiceDesc is the grpc.ServiceDesc for Agent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -98,6 +162,208 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecuteTask",
 			Handler:    _Agent_ExecuteTask_Handler,
+		},
+		{
+			MethodName: "RunCommand",
+			Handler:    _Agent_RunCommand_Handler,
+		},
+		{
+			MethodName: "Shutdown",
+			Handler:    _Agent_Shutdown_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/agent.proto",
+}
+
+// AgentRegistryClient is the client API for AgentRegistry service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type AgentRegistryClient interface {
+	RegisterAgent(ctx context.Context, in *RegisterAgentRequest, opts ...grpc.CallOption) (*RegisterAgentResponse, error)
+	ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error)
+	StopAgent(ctx context.Context, in *StopAgentRequest, opts ...grpc.CallOption) (*StopAgentResponse, error)
+	ExecuteCommand(ctx context.Context, in *ExecuteCommandRequest, opts ...grpc.CallOption) (*ExecuteCommandResponse, error)
+}
+
+type agentRegistryClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAgentRegistryClient(cc grpc.ClientConnInterface) AgentRegistryClient {
+	return &agentRegistryClient{cc}
+}
+
+func (c *agentRegistryClient) RegisterAgent(ctx context.Context, in *RegisterAgentRequest, opts ...grpc.CallOption) (*RegisterAgentResponse, error) {
+	out := new(RegisterAgentResponse)
+	err := c.cc.Invoke(ctx, "/agent.AgentRegistry/RegisterAgent", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentRegistryClient) ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error) {
+	out := new(ListAgentsResponse)
+	err := c.cc.Invoke(ctx, "/agent.AgentRegistry/ListAgents", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentRegistryClient) StopAgent(ctx context.Context, in *StopAgentRequest, opts ...grpc.CallOption) (*StopAgentResponse, error) {
+	out := new(StopAgentResponse)
+	err := c.cc.Invoke(ctx, "/agent.AgentRegistry/StopAgent", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentRegistryClient) ExecuteCommand(ctx context.Context, in *ExecuteCommandRequest, opts ...grpc.CallOption) (*ExecuteCommandResponse, error) {
+	out := new(ExecuteCommandResponse)
+	err := c.cc.Invoke(ctx, "/agent.AgentRegistry/ExecuteCommand", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AgentRegistryServer is the server API for AgentRegistry service.
+// All implementations must embed UnimplementedAgentRegistryServer
+// for forward compatibility
+type AgentRegistryServer interface {
+	RegisterAgent(context.Context, *RegisterAgentRequest) (*RegisterAgentResponse, error)
+	ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error)
+	StopAgent(context.Context, *StopAgentRequest) (*StopAgentResponse, error)
+	ExecuteCommand(context.Context, *ExecuteCommandRequest) (*ExecuteCommandResponse, error)
+	mustEmbedUnimplementedAgentRegistryServer()
+}
+
+// UnimplementedAgentRegistryServer must be embedded to have forward compatible implementations.
+type UnimplementedAgentRegistryServer struct {
+}
+
+func (UnimplementedAgentRegistryServer) RegisterAgent(context.Context, *RegisterAgentRequest) (*RegisterAgentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterAgent not implemented")
+}
+func (UnimplementedAgentRegistryServer) ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAgents not implemented")
+}
+func (UnimplementedAgentRegistryServer) StopAgent(context.Context, *StopAgentRequest) (*StopAgentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopAgent not implemented")
+}
+func (UnimplementedAgentRegistryServer) ExecuteCommand(context.Context, *ExecuteCommandRequest) (*ExecuteCommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecuteCommand not implemented")
+}
+func (UnimplementedAgentRegistryServer) mustEmbedUnimplementedAgentRegistryServer() {}
+
+// UnsafeAgentRegistryServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AgentRegistryServer will
+// result in compilation errors.
+type UnsafeAgentRegistryServer interface {
+	mustEmbedUnimplementedAgentRegistryServer()
+}
+
+func RegisterAgentRegistryServer(s grpc.ServiceRegistrar, srv AgentRegistryServer) {
+	s.RegisterService(&AgentRegistry_ServiceDesc, srv)
+}
+
+func _AgentRegistry_RegisterAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentRegistryServer).RegisterAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.AgentRegistry/RegisterAgent",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentRegistryServer).RegisterAgent(ctx, req.(*RegisterAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentRegistry_ListAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAgentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentRegistryServer).ListAgents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.AgentRegistry/ListAgents",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentRegistryServer).ListAgents(ctx, req.(*ListAgentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentRegistry_StopAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentRegistryServer).StopAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.AgentRegistry/StopAgent",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentRegistryServer).StopAgent(ctx, req.(*StopAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentRegistry_ExecuteCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecuteCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentRegistryServer).ExecuteCommand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/agent.AgentRegistry/ExecuteCommand",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentRegistryServer).ExecuteCommand(ctx, req.(*ExecuteCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AgentRegistry_ServiceDesc is the grpc.ServiceDesc for AgentRegistry service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AgentRegistry_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "agent.AgentRegistry",
+	HandlerType: (*AgentRegistryServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RegisterAgent",
+			Handler:    _AgentRegistry_RegisterAgent_Handler,
+		},
+		{
+			MethodName: "ListAgents",
+			Handler:    _AgentRegistry_ListAgents_Handler,
+		},
+		{
+			MethodName: "StopAgent",
+			Handler:    _AgentRegistry_StopAgent_Handler,
+		},
+		{
+			MethodName: "ExecuteCommand",
+			Handler:    _AgentRegistry_ExecuteCommand_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

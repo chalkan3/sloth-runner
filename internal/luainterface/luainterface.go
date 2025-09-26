@@ -494,17 +494,35 @@ func luaExecRun(L *lua.LState) int {
 
 	cmd := ExecCommand("bash", "-c", commandStr)
 
+	// Start with a minimal, controlled environment
+	cmd.Env = []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", // Set a default PATH
+		"HOME=" + os.Getenv("HOME"), // Keep HOME if it exists
+	}
+
 	// Set workdir from options
 	if workdir := opts.RawGetString("workdir"); workdir.Type() == lua.LTString {
 		cmd.Dir = workdir.String()
 	}
 
-	// Set environment variables from options
-	cmd.Env = os.Environ() // Inherit current environment
+	// Add environment variables from options, overriding existing ones if necessary
 	if envTbl := opts.RawGetString("env"); envTbl.Type() == lua.LTTable {
+		// Create a map for easier overriding
+		envMap := make(map[string]string)
+		for _, envVar := range cmd.Env {
+			parts := strings.SplitN(envVar, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
 		envTbl.(*lua.LTable).ForEach(func(key, value lua.LValue) {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key.String(), value.String()))
+			envMap[key.String()] = value.String()
 		})
+		// Reconstruct cmd.Env from the map
+		cmd.Env = []string{}
+		for k, v := range envMap {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -634,7 +652,7 @@ func newParallelFunction(tr types.TaskRunner) lua.LGFunction {
 		var tasksToRun []*types.Task
 		tasksTable.ForEach(func(_, taskValue lua.LValue) {
 			if taskValue.Type() == lua.LTTable {
-				task := parseLuaTask(taskValue.(*lua.LTable))
+				task := parseLuaTask(L, taskValue.(*lua.LTable))
 				tasksToRun = append(tasksToRun, &task)
 			} else {
 				L.RaiseError("invalid item in parallel task list: expected a table, got %s", taskValue.Type().String())
@@ -763,8 +781,8 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 				usesField := taskTable.RawGetString("uses")
 				if usesField.Type() == lua.LTTable {
 					baseTaskTable := usesField.(*lua.LTable)
-					baseTask := parseLuaTask(baseTaskTable)
-					localOverrides := parseLuaTask(taskTable)
+					baseTask := parseLuaTask(L, baseTaskTable)
+					localOverrides := parseLuaTask(L, taskTable)
 					finalTask = baseTask
 					if localOverrides.Description != "" {
 						finalTask.Description = localOverrides.Description
@@ -778,22 +796,18 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 					// ... (merge other fields)
 					finalTask.Name = taskKey.String()
 				} else {
-					finalTask = parseLuaTask(taskTable)
+					finalTask = parseLuaTask(L, taskTable)
 				}
 				tasks = append(tasks, finalTask)
 			})
 		}
-		// Parse agents
-		agents := make(map[string]types.Agent)
-		luaAgents := groupTable.RawGetString("agents")
-		if luaAgents.Type() == lua.LTTable {
-			luaAgents.(*lua.LTable).ForEach(func(k, v lua.LValue) {
-				if v.Type() == lua.LTTable {
-					agentTable := v.(*lua.LTable)
-					address := agentTable.RawGetString("address").String()
-					agents[k.String()] = types.Agent{Address: address}
-				}
-			})
+		// Parse delegate_to
+		var delegateTo interface{}
+		luaDelegateTo := groupTable.RawGetString("delegate_to")
+		if luaDelegateTo.Type() == lua.LTString {
+			delegateTo = luaDelegateTo.String()
+		} else if luaDelegateTo.Type() == lua.LTTable {
+			delegateTo = LuaTableToGoMap(L, luaDelegateTo.(*lua.LTable))
 		}
 
 		loadedTaskGroups[groupName] = types.TaskGroup{
@@ -802,13 +816,13 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 			Workdir:                  workdir, // Add this line
 			CreateWorkdirBeforeRun:   createWorkdir,
 			CleanWorkdirAfterRunFunc: cleanWorkdirFunc,
-			Agents:                   agents,
+			DelegateTo:               delegateTo,
 		}
 	})
 	return loadedTaskGroups, nil
 }
 
-func parseLuaTask(taskTable *lua.LTable) types.Task {
+func parseLuaTask(L *lua.LState, taskTable *lua.LTable) types.Task {
 	name := taskTable.RawGetString("name").String()
 	desc := taskTable.RawGetString("description").String()
 	var cmdFunc *lua.LFunction
@@ -905,11 +919,13 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		postExec = luaPostExec.(*lua.LFunction)
 	}
 
-	// Parse agent
-	agent := ""
-	luaAgent := taskTable.RawGetString("agent")
-	if luaAgent.Type() == lua.LTString {
-		agent = luaAgent.String()
+	// Parse delegate_to
+	var delegateTo interface{}
+	luaDelegateTo := taskTable.RawGetString("delegate_to")
+	if luaDelegateTo.Type() == lua.LTString {
+		delegateTo = luaDelegateTo.String()
+	} else if luaDelegateTo.Type() == lua.LTTable {
+		delegateTo = LuaTableToGoMap(L, luaDelegateTo.(*lua.LTable))
 	}
 
 	return types.Task{
@@ -927,7 +943,7 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		Async:       async,
 		PreExec:     preExec,
 		PostExec:    postExec,
-		Agent:       agent,
+		DelegateTo:  delegateTo,
 	}
 }
 

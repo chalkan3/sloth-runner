@@ -1,6 +1,42 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.mod
+*.sum
+*.test
+*.prof
 
-/dist
+# Output of the go toolchain
+/bin
+/pkg
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log files
+*.log
+
+# Dependency directories
 vendor/
-/sloth-runner
-*.pid
-sloth-runner-scheduler.pid
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment variables
+.env
+.env.*
+
+# Specific to sloth-runner
+sloth-runner-arm64
+sloth-runner-minimal-arm64
+master.log
