@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "github.com/chalkan3/sloth-runner/proto";
+
+service Agent {
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskResponse);
+}
+
+message ExecuteTaskRequest {
+  string task_name = 1;
+  string task_group = 2;
+  string lua_script = 3;
+  bytes workspace = 4;
+}
+
+message ExecuteTaskResponse {
+  bool success = 1;
+  string output = 2;
+  bytes workspace = 3;
+}

@@ -1,6 +1,8 @@
 package taskrunner
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -18,7 +20,9 @@ import (
 
 	"github.com/chalkan3/sloth-runner/internal/luainterface"
 	"github.com/chalkan3/sloth-runner/internal/types"
+	pb "github.com/chalkan3/sloth-runner/proto"
 	"github.com/pterm/pterm"
+	"google.golang.org/grpc"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -71,9 +75,10 @@ type TaskRunner struct {
 	DryRun      bool
 	Interactive bool
 	surveyAsker SurveyAsker
+	LuaScript   string // New field
 }
 
-func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool, interactive bool, asker SurveyAsker) *TaskRunner {
+func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool, interactive bool, asker SurveyAsker, luaScript string) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
 		TaskGroups:  groups,
@@ -84,6 +89,7 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 		DryRun:      dryRun,
 		Interactive: interactive,
 		surveyAsker: asker,
+		LuaScript:   luaScript,
 	}
 }
 
@@ -188,6 +194,50 @@ func (tr *TaskRunner) executeTaskWithRetries(t *types.Task, inputFromDependencie
 
 func (tr *TaskRunner) runTask(ctx context.Context, t *types.Task, inputFromDependencies *lua.LTable, mu *sync.Mutex, completedTasks map[string]bool, taskOutputs map[string]*lua.LTable, runningTasks map[string]bool, session *types.SharedSession, groupName string) (taskErr error) {
 	startTime := time.Now()
+
+	if t.Agent != "" {
+		group := tr.TaskGroups[groupName]
+		agent, ok := group.Agents[t.Agent]
+		if !ok {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("agent '%s' not found in task group", t.Agent)}
+		}
+
+		// Connect to the agent
+		conn, err := grpc.Dial(agent.Address, grpc.WithInsecure())
+		if err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to connect to agent: %w", err)}
+		}
+		defer conn.Close()
+		c := pb.NewAgentClient(conn)
+
+		// Create a tarball of the workspace
+		var buf bytes.Buffer
+		if err := createTar(session.Workdir, &buf); err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to create workspace tarball: %w", err)}
+		}
+
+		// Send the task and workspace to the agent
+		r, err := c.ExecuteTask(ctx, &pb.ExecuteTaskRequest{
+			TaskName:    t.Name,
+			TaskGroup:   groupName,
+			LuaScript:   tr.L.GetGlobal("__LUASCRIPT__").String(),
+			Workspace:   buf.Bytes(),
+		})
+		if err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to execute task on agent: %w", err)}
+		}
+
+		if !r.GetSuccess() {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("task failed on agent: %s", r.GetOutput())}
+		}
+
+		// Extract the updated workspace
+		if err := extractTar(bytes.NewReader(r.GetWorkspace()), session.Workdir); err != nil {
+			return &TaskExecutionError{TaskName: t.Name, Err: fmt.Errorf("failed to extract updated workspace: %w", err)}
+		}
+
+		return nil
+	}
 
 	L := lua.NewState()
 	defer L.Close()
@@ -709,4 +759,68 @@ func (tr *TaskRunner) RunTasksParallel(tasks []*types.Task, input *lua.LTable) (
 	}
 
 	return results, nil
+}
+
+// createTar function to create a tarball of a directory
+func createTar(source string, writer io.Writer) error {
+	tw := tar.NewWriter(writer)
+	defer tw.Close()
+	return filepath.Walk(source, func(file string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		header, err := tar.FileInfoHeader(fi, file)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(file[len(source):])
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			f, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if _, err := io.Copy(tw, f); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// extractTar function to extract a tarball to a directory
+func extractTar(reader io.Reader, dest string) error {
+	tr := tar.NewReader(reader)
+	for {
+		header, err := tr.Next()
+		switch {
+		case err == io.EOF:
+			return nil
+		case err != nil:
+			return err
+		case header == nil:
+			continue
+		}
+		target := filepath.Join(dest, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if _, err := os.Stat(target); err != nil {
+				if err := os.MkdirAll(target, 0755); err != nil {
+					return err
+				}
+			}
+		case tar.TypeReg:
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if _, err := io.Copy(f, tr); err != nil {
+				return err
+			}
+		}
+	}
 }

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"context"
 	// "encoding/json" // Removed
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +30,8 @@ import (
 	"github.com/chalkan3/sloth-runner/internal/scheduler"
 	"github.com/chalkan3/sloth-runner/internal/taskrunner"
 	"github.com/chalkan3/sloth-runner/internal/types"
+	pb "github.com/chalkan3/sloth-runner/proto"
+	"google.golang.org/grpc"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -399,14 +405,14 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string, isProduction bool, valuesFilePath string, tr types.TaskRunner) (map[string]types.TaskGroup, error) {
+func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string, isProduction bool, valuesFilePath string, tr types.TaskRunner) (map[string]types.TaskGroup, string, error) {
 	templateContent, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading Lua template file %s: %w", configFilePath, err)
+		return nil, "", fmt.Errorf("error reading Lua template file %s: %w", configFilePath, err)
 	}
 	tmpl, err := template.New("lua_config").Parse(string(templateContent))
 	if err != nil {
-		return nil, fmt.Errorf("error parsing Lua template: %w", err)
+		return nil, "", fmt.Errorf("error parsing Lua template: %w", err)
 	}
 	var shards []int
 	if shardsStr != "" {
@@ -414,7 +420,7 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 		for _, s := range shardStrings {
 			shard, err := strconv.Atoi(strings.TrimSpace(s))
 			if err != nil {
-				return nil, fmt.Errorf("invalid shard number '%s': %w", s, err)
+				return nil, "", fmt.Errorf("invalid shard number '%s': %w", s, err)
 			}
 			shards = append(shards, shard)
 		}
@@ -426,20 +432,20 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 	}
 	var renderedLua bytes.Buffer
 	if err := tmpl.Execute(&renderedLua, data); err != nil {
-		return nil, fmt.Errorf("error executing Lua template: %w", err)
+		return nil, "", fmt.Errorf("error executing Lua template: %w", err)
 	}
 
 	// Add plugins to Lua path
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user home directory: %w", err)
+		return nil, "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 	pluginsDir := filepath.Join(homeDir, ".sloth-runner", "plugins")
 
 	if _, err := os.Stat(pluginsDir); !os.IsNotExist(err) {
 		pluginDirs, err := ioutil.ReadDir(pluginsDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read plugins directory: %w", err)
+			return nil, "", fmt.Errorf("failed to read plugins directory: %w", err)
 		}
 
 		packagePath := L.GetGlobal("package").(*lua.LTable).RawGetString("path").String()
@@ -458,13 +464,13 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 	if valuesFilePath != "" {
 		valuesContent, err := ioutil.ReadFile(valuesFilePath)
 		if err != nil {
-			return nil, fmt.Errorf("error reading values file %s: %w", valuesFilePath, err)
+			return nil, "", fmt.Errorf("error reading values file %s: %w", valuesFilePath, err)
 		}
 
 		// Process values.yaml as a Go template
 		tmpl, err := template.New("values").Parse(string(valuesContent))
 		if err != nil {
-			return nil, fmt.Errorf("error parsing values template: %w", err)
+			return nil, "", fmt.Errorf("error parsing values template: %w", err)
 		}
 
 		// Create a map of environment variables to pass to the template
@@ -476,21 +482,21 @@ func loadAndRenderLuaConfig(L *lua.LState, configFilePath, env, shardsStr string
 
 		var renderedValues bytes.Buffer
 		if err := tmpl.Execute(&renderedValues, map[string]interface{}{"Env": envMap}); err != nil {
-			return nil, fmt.Errorf("error executing values template: %w", err)
+			return nil, "", fmt.Errorf("error executing values template: %w", err)
 		}
 
 		var goValues map[string]interface{}
 		if err := yaml.Unmarshal(renderedValues.Bytes(), &goValues); err != nil {
-			return nil, fmt.Errorf("error parsing values YAML from %s: %w", valuesFilePath, err)
+			return nil, "", fmt.Errorf("error parsing values YAML from %s: %w", valuesFilePath, err)
 		}
 		luaValues := luainterface.GoValueToLua(L, goValues)
 		L.SetGlobal("values", luaValues)
 	}
 	taskGroups, err := luainterface.LoadTaskDefinitions(L, renderedLua.String(), configFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("error loading task definitions: %w", err)
+		return nil, "", fmt.Errorf("error loading task definitions: %w", err)
 	}
-	return taskGroups, nil
+	return taskGroups, renderedLua.String(), nil
 }
 
 var schedulerCmd = &cobra.Command{
@@ -886,7 +892,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 		defer L.Close()
 
 		var dummyTr types.TaskRunner = nil
-		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
+		taskGroups, luaScript, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, dummyTr)
 		if err != nil {
 			return err
 		}
@@ -931,7 +937,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 			fmt.Println("No tasks selected.")
 			return nil
 		}
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun, interactive, surveyAsker)
+		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun, interactive, surveyAsker, luaScript)
 		luainterface.OpenParallel(L, tr)
 		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {
@@ -948,7 +954,7 @@ var listCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		L := lua.NewState()
 		defer L.Close()
-		taskGroups, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
+		taskGroups, _, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
 		if err != nil {
 			return err
 		}
@@ -983,7 +989,7 @@ var validateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		L := lua.NewState()
 		defer L.Close()
-		_, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
+		_, _, err := loadAndRenderLuaConfig(L, configFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
 		if err != nil {
 			return err
 		}
@@ -1008,7 +1014,7 @@ Inside the test file, you can use the 'test' and 'assert' modules to validate ta
 
 		// Load the main workflow to get TaskDefinitions
 		luainterface.OpenAll(L)
-		taskGroups, err := loadAndRenderLuaConfig(L, workflowFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
+		taskGroups, _, err := loadAndRenderLuaConfig(L, workflowFilePath, env, shardsStr, isProduction, valuesFilePath, nil)
 		if err != nil {
 			return fmt.Errorf("could not load workflow file %s: %w", workflowFilePath, err)
 		}
@@ -1100,12 +1106,145 @@ func checkDependencies() error {
 	return nil
 }
 
+var agentCmd = &cobra.Command{
+	Use:   "agent",
+	Short: "Starts the sloth-runner in agent mode",
+	Long:  `The agent command starts the sloth-runner as a background agent that can execute tasks remotely.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, _ := cmd.Flags().GetInt("port")
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			return fmt.Errorf("failed to listen: %v", err)
+		}
+		s := grpc.NewServer()
+		pb.RegisterAgentServer(s, &agentServer{})
+		slog.Info(fmt.Sprintf("Agent listening at %v", lis.Addr()))
+		if err := s.Serve(lis); err != nil {
+			return fmt.Errorf("failed to serve: %v", err)
+		}
+		return nil
+	},
+}
+
+type agentServer struct {
+	pb.UnimplementedAgentServer
+}
+
+func (s *agentServer) ExecuteTask(ctx context.Context, in *pb.ExecuteTaskRequest) (*pb.ExecuteTaskResponse, error) {
+	slog.Info(fmt.Sprintf("Received task: %s", in.GetTaskName()))
+
+	// Create a temporary directory for the workspace
+	workDir, err := ioutil.TempDir("", "sloth-runner-agent-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	// Unpack the workspace
+	if err := extractTar(bytes.NewReader(in.GetWorkspace()), workDir); err != nil {
+		return nil, fmt.Errorf("failed to untar workspace: %w", err)
+	}
+
+	// Create a new Lua state
+	L := lua.NewState()
+	defer L.Close()
+
+	// Load the Lua script
+	if err := L.DoString(in.GetLuaScript()); err != nil {
+		return nil, fmt.Errorf("failed to load lua script: %w", err)
+	}
+
+	// Create a new task runner
+	taskGroups, err := luainterface.LoadTaskDefinitions(L, in.GetLuaScript(), "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load task definitions: %w", err)
+	}
+				tr := taskrunner.NewTaskRunner(L, taskGroups, in.GetTaskGroup(), []string{in.GetTaskName()}, false, false, nil, in.GetLuaScript())
+	// Run the task
+	if err := tr.Run(); err != nil {
+		return &pb.ExecuteTaskResponse{Success: false, Output: err.Error()}, nil
+	}
+
+	// Pack the workspace
+	var buf bytes.Buffer
+	if err := createTar(workDir, &buf); err != nil {
+		return nil, fmt.Errorf("failed to tar workspace: %w", err)
+	}
+
+	return &pb.ExecuteTaskResponse{Success: true, Output: "Task executed successfully", Workspace: buf.Bytes()}, nil
+}
+
+// tar function to create a tarball of a directory
+func createTar(source string, writer io.Writer) error {
+	tw := tar.NewWriter(writer)
+	defer tw.Close()
+	return filepath.Walk(source, func(file string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		header, err := tar.FileInfoHeader(fi, file)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(file[len(source):])
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			f, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if _, err := io.Copy(tw, f); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// untar function to extract a tarball to a directory
+func extractTar(reader io.Reader, dest string) error {
+	tr := tar.NewReader(reader)
+	for {
+		header, err := tr.Next()
+		switch {
+		case err == io.EOF:
+			return nil
+		case err != nil:
+			return err
+		case header == nil:
+			continue
+		}
+		target := filepath.Join(dest, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if _, err := os.Stat(target); err != nil {
+				if err := os.MkdirAll(target, 0755); err != nil {
+					return err
+				}
+			}
+		case tar.TypeReg:
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if _, err := io.Copy(f, tr); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 func init() {
 	rootCmd.SetOut(os.Stdout) // Add this line
 	rootCmd.SetErr(os.Stderr) // Add this line
 	rootCmd.SilenceErrors = false // Add this line
 	rootCmd.SilenceUsage = false // Add this line
 
+	agentCmd.Flags().IntP("port", "p", 50051, "The port for the agent to listen on")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
 	rootCmd.AddCommand(newCmd)
@@ -1113,6 +1252,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(replCmd)
 	rootCmd.AddCommand(schedulerCmd)

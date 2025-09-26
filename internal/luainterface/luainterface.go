@@ -783,12 +783,26 @@ func LoadTaskDefinitions(L *lua.LState, luaScriptContent string, configFilePath 
 				tasks = append(tasks, finalTask)
 			})
 		}
+		// Parse agents
+		agents := make(map[string]types.Agent)
+		luaAgents := groupTable.RawGetString("agents")
+		if luaAgents.Type() == lua.LTTable {
+			luaAgents.(*lua.LTable).ForEach(func(k, v lua.LValue) {
+				if v.Type() == lua.LTTable {
+					agentTable := v.(*lua.LTable)
+					address := agentTable.RawGetString("address").String()
+					agents[k.String()] = types.Agent{Address: address}
+				}
+			})
+		}
+
 		loadedTaskGroups[groupName] = types.TaskGroup{
 			Description:              description,
 			Tasks:                    tasks,
 			Workdir:                  workdir, // Add this line
 			CreateWorkdirBeforeRun:   createWorkdir,
 			CleanWorkdirAfterRunFunc: cleanWorkdirFunc,
+			Agents:                   agents,
 		}
 	})
 	return loadedTaskGroups, nil
@@ -891,6 +905,13 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		postExec = luaPostExec.(*lua.LFunction)
 	}
 
+	// Parse agent
+	agent := ""
+	luaAgent := taskTable.RawGetString("agent")
+	if luaAgent.Type() == lua.LTString {
+		agent = luaAgent.String()
+	}
+
 	return types.Task{
 		Name:        name,
 		Description: desc,
@@ -906,6 +927,7 @@ func parseLuaTask(taskTable *lua.LTable) types.Task {
 		Async:       async,
 		PreExec:     preExec,
 		PostExec:    postExec,
+		Agent:       agent,
 	}
 }
 
