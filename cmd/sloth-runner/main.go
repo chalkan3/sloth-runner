@@ -864,6 +864,12 @@ Run 'sloth-runner template list' to see all available templates.`,
 	},
 }
 
+
+
+func SetSurveyAsker(asker taskrunner.SurveyAsker) {
+	surveyAsker = asker
+}
+
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Executes tasks defined in a Lua template file",
@@ -925,7 +931,7 @@ You can specify the file, environment variables, and target specific tasks or gr
 			fmt.Println("No tasks selected.")
 			return nil
 		}
-		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun, interactive)
+		tr := taskrunner.NewTaskRunner(L, taskGroups, targetGroup, targetTasks, dryRun, interactive, surveyAsker)
 		luainterface.OpenParallel(L, tr)
 		luainterface.OpenSession(L, tr)
 		if err := tr.Run(); err != nil {

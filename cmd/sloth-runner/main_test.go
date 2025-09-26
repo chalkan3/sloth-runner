@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -193,8 +194,7 @@ func TestHelperProcess(t *testing.T) {
 	}
 }
 
-/*
-// func TestSchedulerEnable(t *testing.T) {
+func TestSchedulerEnable(t *testing.T) {
 	// Create a temporary directory for test artifacts
 	tmpDir, err := ioutil.TempDir("", "sloth-runner-test-")
 	assert.NoError(t, err)
@@ -229,6 +229,8 @@ func TestHelperProcess(t *testing.T) {
 	output, err := executeCommand(rootCmd, "scheduler", "enable", "-c", schedulerConfigPath)
 	assert.NoError(t, err, output)
 
+	time.Sleep(1500 * time.Millisecond)
+
 	// Assert output messages
 	assert.Contains(t, output, "Starting sloth-runner scheduler in background...")
 	// PID is dynamic, so we can't assert the exact PID, but we can check for the message
@@ -248,7 +250,6 @@ func TestHelperProcess(t *testing.T) {
 		testSchedulerDisable(t, tmpDir)
 	})
 }
-*/
 
 var lastHelperProcessPID int // Package-level variable to store PID
 
@@ -362,7 +363,14 @@ func TestSchedulerDelete(t *testing.T) {
 }
 
 /*
-// func TestInteractiveRunner(t *testing.T) {
+	askOne func(survey.Prompt, interface{}, ...survey.AskOpt) error
+}
+
+func (m *mockSurveyAsker) AskOne(p survey.Prompt, r interface{}, o ...survey.AskOpt) error {
+	return m.askOne(p, r, o...)
+}
+
+func TestInteractiveRunner(t *testing.T) {
 	// Create a temporary directory for test artifacts
 	tmpDir, err := ioutil.TempDir("", "sloth-runner-test-")
 	assert.NoError(t, err)
@@ -387,14 +395,17 @@ TaskDefinitions = {
 	// Mock survey.AskOne
 	actions := []string{"run", "skip", "abort"}
 	actionIndex := 0
-	taskrunner.SetSurveyAskOne(func(p survey.Prompt, response interface{}, opts ...survey.AskOpt) error {
-		if actionIndex < len(actions) {
-			*(response.(*string)) = actions[actionIndex]
-			actionIndex++
-		}
-		return nil
+	oldAsker := surveyAsker
+	SetSurveyAsker(&mockSurveyAsker{
+		askOne: func(p survey.Prompt, response interface{}, opts ...survey.AskOpt) error {
+			if actionIndex < len(actions) {
+				*(response.(*string)) = actions[actionIndex]
+				actionIndex++
+			}
+			return nil
+		},
 	})
-	defer taskrunner.SetSurveyAskOne(survey.AskOne) // Restore original function
+	defer func() { SetSurveyAsker(oldAsker) }()
 
 	// Execute the run command with --interactive
 	output, err := executeCommand(rootCmd, "run", "-f", taskFilePath, "--interactive")
@@ -408,7 +419,19 @@ TaskDefinitions = {
 	assert.NotContains(t, output, "Task 2 executed")
 	assert.NotContains(t, output, "Task 3 executed")
 	assert.Contains(t, output, "Aborting execution by user choice.")
-}
+
+	// Get the run command
+	runCmd, _, err := rootCmd.Find([]string{"run"})
+	assert.NoError(t, err)
+
+	// Set flags
+	runCmd.Flags().Set("file", taskFilePath)
+	runCmd.Flags().Set("interactive", "true")
+
+	// Execute the run command's RunE function
+	err = runCmd.RunE(runCmd, []string{})
+
+	assert.Error(t, err) // Expect an error because we abort
 */
 
 func TestEnhancedValuesTemplating(t *testing.T) {

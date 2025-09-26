@@ -22,11 +22,14 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-var surveyAskOne = survey.AskOne
+type SurveyAsker interface {
+	AskOne(survey.Prompt, interface{}, ...survey.AskOpt) error
+}
 
-// SetSurveyAskOne allows tests to override the survey.AskOne function
-func SetSurveyAskOne(f func(p survey.Prompt, response interface{}, opts ...survey.AskOpt) error) {
-	surveyAskOne = f
+type DefaultSurveyAsker struct{}
+
+func (d *DefaultSurveyAsker) AskOne(p survey.Prompt, r interface{}, o ...survey.AskOpt) error {
+	return survey.AskOne(p, r, o...)
 }
 
 // executeShellCondition executes a shell command and returns true if it succeeds (exit code 0).
@@ -66,10 +69,11 @@ type TaskRunner struct {
 	Outputs     map[string]interface{}
 	Exports     map[string]interface{}
 	DryRun      bool
-	Interactive bool // New: To enable interactive mode
+	Interactive bool
+	surveyAsker SurveyAsker
 }
 
-func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool, interactive bool) *TaskRunner {
+func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup string, targetTasks []string, dryRun bool, interactive bool, asker SurveyAsker) *TaskRunner {
 	return &TaskRunner{
 		L:           L,
 		TaskGroups:  groups,
@@ -79,6 +83,7 @@ func NewTaskRunner(L *lua.LState, groups map[string]types.TaskGroup, targetGroup
 		Exports:     make(map[string]interface{}),
 		DryRun:      dryRun,
 		Interactive: interactive,
+		surveyAsker: asker,
 	}
 }
 
@@ -411,7 +416,7 @@ func (tr *TaskRunner) Run() error {
 					Options: []string{"run", "skip", "abort", "continue"},
 					Default: "run",
 				}
-				surveyAskOne(prompt, &action)
+				tr.surveyAsker.AskOne(prompt, &action)
 
 				switch action {
 				case "skip":
