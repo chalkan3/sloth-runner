@@ -3,3 +3,4 @@
 vendor/
 /sloth-runner
 *.pid
+sloth-runner-scheduler.pid
