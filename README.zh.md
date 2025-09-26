@@ -184,6 +184,63 @@ TaskDefinitions = {
 
 ---
 
+## 🌐 分布式任务执行示例
+
+`sloth-runner` 允许您使用主从架构在多台机器上分发任务执行。
+
+### 1. 启动代理
+
+在您的远程机器（例如，`192.168.1.16`）上，以代理模式启动 `sloth-runner`，并指定一个端口进行监听：
+
+```bash
+sloth-runner agent -p 50055
+```
+
+### 2. 定义远程任务
+
+在您的 Lua 任务文件（例如，`remote_workflow.lua`）中，在 `TaskDefinitions` 表中定义您的远程代理，并使用 `agent` 字段将任务分配给它：
+
+```lua
+TaskDefinitions = {
+  remote_group = {
+    description = "一个包含远程任务的任务组。",
+    agents = {
+      my_remote_agent = { address = "192.168.1.16:50055" } -- 替换为您的代理 IP 和端口
+    },
+    tasks = {
+      {
+        name = "remote_hello",
+        description = "在远程代理上运行 hello world 任务。",
+        agent = "my_remote_agent", -- 将任务分配给定义的代理
+        command = function(params)
+          log.info("来自远程代理的问候！")
+          local stdout, stderr, err = exec.run("hostname")
+          if err then
+            log.error("无法运行 hostname 命令: " .. stderr)
+            return false, "hostname 命令失败。"
+          else
+            log.info("Hostname: " .. stdout)
+            return true, "远程任务执行成功。"
+          end
+        end
+      }
+    }
+  }
+}
+```
+
+### 3. 运行远程任务
+
+在您的本地机器上，执行 Lua 任务文件。`sloth-runner` 将自动连接到指定的代理，并分派 `remote_hello` 任务进行执行：
+
+```bash
+sloth-runner run -f remote_workflow.lua -g remote_group -t remote_hello
+```
+
+`hostname` 命令的输出将反映远程机器的主机名，确认分布式执行成功。
+
+---
+
 ## 📄 模板
 
 `sloth-runner` 提供了几个模板，可以快速搭建新的任务定义文件。

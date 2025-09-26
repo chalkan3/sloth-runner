@@ -184,6 +184,63 @@ TaskDefinitions = {
 
 ---
 
+## 🌐 Distributed Task Execution Example
+
+`sloth-runner` allows you to distribute task execution across multiple machines using a master-agent architecture.
+
+### 1. Start the Agent
+
+On your remote machine (e.g., `192.168.1.16`), start the `sloth-runner` in agent mode, specifying a port for it to listen on:
+
+```bash
+sloth-runner agent -p 50055
+```
+
+### 2. Define a Remote Task
+
+In your Lua task file (e.g., `remote_workflow.lua`), define your remote agent within the `TaskDefinitions` table and assign a task to it using the `agent` field:
+
+```lua
+TaskDefinitions = {
+  remote_group = {
+    description = "A task group with a remote task.",
+    agents = {
+      my_remote_agent = { address = "192.168.1.16:50055" } -- Replace with your agent's IP and port
+    },
+    tasks = {
+      {
+        name = "remote_hello",
+        description = "Runs a hello world task on a remote agent.",
+        agent = "my_remote_agent", -- Assign the task to the defined agent
+        command = function(params)
+          log.info("Hello from remote agent!")
+          local stdout, stderr, err = exec.run("hostname")
+          if err then
+            log.error("Failed to run hostname command: " .. stderr)
+            return false, "Hostname command failed."
+          else
+            log.info("Hostname: " .. stdout)
+            return true, "Remote task executed successfully."
+          end
+        end
+      }
+    }
+  }
+}
+```
+
+### 3. Run the Remote Task
+
+From your local machine, execute the Lua task file. `sloth-runner` will automatically connect to the specified agent and dispatch the `remote_hello` task for execution:
+
+```bash
+sloth-runner run -f remote_workflow.lua -g remote_group -t remote_hello
+```
+
+The output from the `hostname` command will reflect the remote machine's hostname, confirming successful distributed execution.
+
+---
+
 ## 📄 Templates
 
 `sloth-runner` provides several templates to quickly scaffold new task definition files.
