@@ -1,24 +1,11 @@
-# Documentação do Sloth-Runner
+# Sloth-Runner Documentation
 
-Bem-vindo à documentação completa do Sloth-Runner, sua ferramenta flexível para automação de tarefas e orquestração de fluxos de trabalho usando scripts Lua.
+Welcome to the comprehensive documentation for Sloth-Runner, your flexible tool for task automation and workflow orchestration using Lua scripts.
 
-Aqui você encontrará guias detalhados, referências de API e exemplos práticos para aproveitar ao máximo o poder do Sloth-Runner.
+Here you will find detailed guides, API references, and practical examples to help you make the most of Sloth-Runner's power.
 
-## Índice
+## Languages
 
-*   [Agendador de Tarefas](./scheduler.md)
-*   [Início Rápido](./getting-started.md)
-*   [Conceitos Essenciais](./core-concepts.md)
-*   [Exemplos Práticos](./EXAMPLES.md)
-*   [Funcionalidades Avançadas](./advanced-features.md)
-*   [REPL Interativo](./repl.md)
-*   **Módulos Built-in:**
-    *   [Módulo AWS](./modules/aws.md)
-    *   [Módulo Azure](./modules/azure.md)
-    *   [Módulo DigitalOcean](./modules/digitalocean.md)
-    *   [Módulo Docker](./modules/docker.md)
-    *   [Módulo Git](./modules/git.md)
-    *   [Módulo Pulumi](./modules/pulumi.md)
-    *   [Módulo Salt](./modules/salt.md)
-    *   [Módulo Terraform](./modules/terraform.md)
-*   [Exemplos Avançados](./advanced-examples.md)
+*   [English](./en/index.md)
+*   [Português](./pt/index.md)
+*   [中文](./zh/index.md)
