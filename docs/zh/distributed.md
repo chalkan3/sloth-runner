@@ -11,43 +11,48 @@
 
 ## 配置远程任务
 
-要在远程代理上运行任务，您需要在任务组中定义代理，然后为任务指定代理。
+要在远程代理上运行任务，您需要在任务组或单个任务定义中指定 `delegate_to` 字段。
 
-### 1. 在任务组中定义代理
+### 1. 在任务组级别委托给代理
 
-在您的 Lua 任务定义文件中，您可以在 `TaskDefinitions` 组中定义一个代理表。每个代理都需要一个唯一的名称和一个 `address`（例如，`host:port`），代理在该地址上侦听。
+您可以使用 `delegate_to` 字段直接在 `TaskDefinitions` 组中定义代理。此组中的所有任务都将委托给此代理，除非被任务特定的 `delegate_to` 覆盖。
 
 ```lua
 TaskDefinitions = {
   my_distributed_group = {
     description = "一个包含分布式任务的任务组。",
-    agents = {
-      my_remote_agent = { address = "localhost:50051" },
-      another_agent = { address = "192.168.1.100:50051" }
-    },
+    delegate_to = { address = "localhost:50051" }, -- 为整个组定义代理
     tasks = {
-      -- ... 在此处定义任务 ...
+      {
+        name = "remote_hello",
+        description = "在远程代理上运行 hello world 任务。",
+        -- 此处不需要 'delegate_to' 字段，它继承自组
+        command = function(params)
+          log.info("来自远程代理的问候！")
+          return true, "远程任务已执行。"
+        end
+      }
     }
   }
 }
 ```
 
-### 2. 将任务分配给代理
+### 2. 在任务级别委托给代理
 
-在任务组中定义代理后，您可以使用任务定义中的 `agent` 字段将任务分配给特定的代理：
+或者，您可以直接在单个任务上指定 `delegate_to` 字段。这将覆盖任何组级别的委托或允许即席远程执行。
 
 ```lua
 TaskDefinitions = {
-  my_distributed_group = {
-    -- ... 代理定义 ...
+  my_group = {
+    description = "一个包含特定远程任务的任务组。",
     tasks = {
       {
-        name = "remote_hello",
-        description = "在远程代理上运行 hello world 任务。",
-        agent = "my_remote_agent", -- 在此处指定代理名称
+        name = "specific_remote_task",
+        description = "在特定远程代理上运行此任务。",
+        delegate_to = { address = "192.168.1.100:50051" }, -- 仅为此任务定义代理
         command = function(params)
-          log.info("来自远程代理的问候！")
-          return true, "远程任务已执行。"
+          log.info("来自特定远程代理的问候！")
+          return true, "特定远程任务已执行。"
         end
       },
       {

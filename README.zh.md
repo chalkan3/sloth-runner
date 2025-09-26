@@ -204,14 +204,12 @@ sloth-runner agent -p 50055
 TaskDefinitions = {
   remote_group = {
     description = "一个包含远程任务的任务组。",
-    agents = {
-      my_remote_agent = { address = "192.168.1.16:50055" } -- 替换为您的代理 IP 和端口
-    },
+    delegate_to = { address = "192.168.1.16:50055" }, -- 为整个组定义代理
     tasks = {
       {
         name = "remote_hello",
         description = "在远程代理上运行 hello world 任务。",
-        agent = "my_remote_agent", -- 将任务分配给定义的代理
+        -- 此处不需要 'agent' 字段，它继承自组
         command = function(params)
           log.info("来自远程代理的问候！")
           local stdout, stderr, err = exec.run("hostname")

@@ -11,43 +11,48 @@ O modelo de execução distribuída no `sloth-runner` segue uma arquitetura mest
 
 ## Configurando Tarefas Remotas
 
-Para executar uma tarefa em um agente remoto, você precisa definir o agente em seu grupo de tarefas e, em seguida, especificar o agente para a tarefa.
+Para executar uma tarefa em um agente remoto, você precisa especificar o campo `delegate_to` no grupo de tarefas ou na definição da tarefa individual.
 
-### 1. Definir Agentes no Grupo de Tarefas
+### 1. Delegar a um Agente no Nível do Grupo de Tarefas
 
-Em seu arquivo de definição de tarefas Lua, você pode definir uma tabela de agentes dentro do seu grupo `TaskDefinitions`. Cada agente precisa de um nome exclusivo e um `address` (por exemplo, `host:port`) onde o agente está escutando.
+Você pode definir o agente diretamente dentro do seu grupo `TaskDefinitions` usando o campo `delegate_to`. Todas as tarefas dentro deste grupo serão então delegadas a este agente, a menos que sejam substituídas por um `delegate_to` específico da tarefa.
 
 ```lua
 TaskDefinitions = {
   my_distributed_group = {
     description = "Um grupo de tarefas com tarefas distribuídas.",
-    agents = {
-      my_remote_agent = { address = "localhost:50051" },
-      another_agent = { address = "192.168.1.100:50051" }
-    },
+    delegate_to = { address = "localhost:50051" }, -- Define o agente para todo o grupo
     tasks = {
-      -- ... tarefas definidas aqui ...
+      {
+        name = "remote_hello",
+        description = "Executa uma tarefa hello world em um agente remoto.",
+        -- Não é necessário o campo 'delegate_to' aqui, ele herda do grupo
+        command = function(params)
+          log.info("Olá do agente remoto!")
+          return true, "Tarefa remota executada."
+        end
+      }
     }
   }
 }
 ```
 
-### 2. Atribuir Tarefa a um Agente
+### 2. Delegar a um Agente no Nível da Tarefa
 
-Uma vez que os agentes são definidos no grupo de tarefas, você pode atribuir uma tarefa a um agente específico usando o campo `agent` na definição da tarefa:
+Alternativamente, você pode especificar o campo `delegate_to` diretamente em uma tarefa individual. Isso substituirá qualquer delegação em nível de grupo ou permitirá a execução remota ad-hoc.
 
 ```lua
 TaskDefinitions = {
-  my_distributed_group = {
-    -- ... definições de agente ...
+  my_group = {
+    description = "Um grupo de tarefas com uma tarefa remota específica.",
     tasks = {
       {
-        name = "remote_hello",
-        description = "Executa uma tarefa hello world em um agente remoto.",
-        agent = "my_remote_agent", -- Especifique o nome do agente aqui
+        name = "specific_remote_task",
+        description = "Executa esta tarefa em um agente remoto específico.",
+        delegate_to = { address = "192.168.1.100:50051" }, -- Define o agente apenas para esta tarefa
         command = function(params)
-          log.info("Olá do agente remoto!")
-          return true, "Tarefa remota executada."
+          log.info("Olá de um agente remoto específico!")
+          return true, "Tarefa remota específica executada."
         end
       },
       {

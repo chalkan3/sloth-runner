@@ -11,43 +11,48 @@ The distributed execution model in `sloth-runner` follows a master-agent archite
 
 ## Configuring Remote Tasks
 
-To run a task on a remote agent, you need to define the agent in your task group and then specify the agent for the task.
+To run a task on a remote agent, you need to specify the `delegate_to` field in either the task group or the individual task definition.
 
-### 1. Define Agents in Task Group
+### 1. Delegate to an Agent at the Task Group Level
 
-In your Lua task definition file, you can define a table of agents within your `TaskDefinitions` group. Each agent needs a unique name and an `address` (e.g., `host:port`) where the agent is listening.
+You can define the agent directly within your `TaskDefinitions` group using the `delegate_to` field. All tasks within this group will then be delegated to this agent unless overridden by a task-specific `delegate_to`.
 
 ```lua
 TaskDefinitions = {
   my_distributed_group = {
     description = "A task group with distributed tasks.",
-    agents = {
-      my_remote_agent = { address = "localhost:50051" },
-      another_agent = { address = "192.168.1.100:50051" }
-    },
+    delegate_to = { address = "localhost:50051" }, -- Define the agent for the entire group
     tasks = {
-      -- ... tasks defined here ...
+      {
+        name = "remote_hello",
+        description = "Runs a hello world task on a remote agent.",
+        -- No 'delegate_to' field needed here, it inherits from the group
+        command = function(params)
+          log.info("Hello from remote agent!")
+          return true, "Remote task executed."
+        end
+      }
     }
   }
 }
 ```
 
-### 2. Assign Task to an Agent
+### 2. Delegate to an Agent at the Task Level
 
-Once agents are defined in the task group, you can assign a task to a specific agent using the `agent` field in the task definition:
+Alternatively, you can specify the `delegate_to` field directly on an individual task. This will override any group-level delegation or allow for ad-hoc remote execution.
 
 ```lua
 TaskDefinitions = {
-  my_distributed_group = {
-    -- ... agent definitions ...
+  my_group = {
+    description = "A task group with a specific remote task.",
     tasks = {
       {
-        name = "remote_hello",
-        description = "Runs a hello world task on a remote agent.",
-        agent = "my_remote_agent", -- Specify the agent name here
+        name = "specific_remote_task",
+        description = "Runs this task on a specific remote agent.",
+        delegate_to = { address = "192.168.1.100:50051" }, -- Define agent for this task only
         command = function(params)
-          log.info("Hello from remote agent!")
-          return true, "Remote task executed."
+          log.info("Hello from a specific remote agent!")
+          return true, "Specific remote task executed."
         end
       },
       {

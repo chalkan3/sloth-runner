@@ -204,14 +204,12 @@ In your Lua task file (e.g., `remote_workflow.lua`), define your remote agent wi
 TaskDefinitions = {
   remote_group = {
     description = "A task group with a remote task.",
-    agents = {
-      my_remote_agent = { address = "192.168.1.16:50055" } -- Replace with your agent's IP and port
-    },
+    delegate_to = { address = "192.168.1.16:50055" }, -- Define the agent for the entire group
     tasks = {
       {
         name = "remote_hello",
         description = "Runs a hello world task on a remote agent.",
-        agent = "my_remote_agent", -- Assign the task to the defined agent
+        -- No 'agent' field needed here, it inherits from the group
         command = function(params)
           log.info("Hello from remote agent!")
           local stdout, stderr, err = exec.run("hostname")
