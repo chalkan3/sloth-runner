@@ -635,7 +635,7 @@ It will monitor and execute tasks defined in the scheduler configuration file.`,
 
 		// Re-execute the current binary in background with a special flag
 		command := execCommand(os.Args[0], "--run-as-scheduler", "--scheduler-config", schedulerConfigPath)
-		command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		setSysProcAttr(command)
 		command.Stdout = os.Stdout // For debugging, redirect to /dev/null in production
 		command.Stderr = os.Stderr // For debugging, redirect to /dev/null in production
 

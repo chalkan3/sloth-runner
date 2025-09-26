@@ -1,0 +1,80 @@
+site_name: Sloth Runner
+site_description: 'A fast and flexible task runner built with Go and Lua.'
+site_author: 'Sloth Runner Team'
+
+# Repository
+repo_name: 'chalkan3/sloth-runner'
+repo_url: 'https://github.com/chalkan3/sloth-runner'
+
+# Copyright
+copyright: 'Copyright &copy; 2024 Sloth Runner Team'
+
+# Theme
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+# Plugins
+plugins:
+  - search
+
+# Extensions
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - toc:
+      permalink: true
+
+# Navigation
+nav:
+  - 'Home': 'index.md'
+  - 'Getting Started': 'getting-started.md'
+  - 'Core Concepts': 'core-concepts.md'
+  - 'Advanced Examples': 'advanced-examples.md'
+  - 'CLI': 'CLI.md'
+  - 'REPL': 'repl.md'
+  - 'Testing': 'testing.md'
+  - Modules:
+    - 'AWS': 'modules/aws.md'
+    - 'Azure': 'modules/azure.md'
+    - 'Data': 'modules/data.md'
+    - 'DigitalOcean': 'modules/digitalocean.md'
+    - 'Docker': 'modules/docker.md'
+    - 'Exec': 'modules/exec.md'
+    - 'FS': 'modules/fs.md'
+    - 'GCP': 'modules/gcp.md'
+    - 'Git': 'modules/git.md'
+    - 'Log': 'modules/log.md'
+    - 'Net': 'modules/net.md'
+    - 'Notifications': 'modules/notifications.md'
+    - 'Pulumi': 'modules/pulumi.md'
+    - 'Python': 'modules/python.md'
+    - 'Salt': 'modules/salt.md'
+    - 'Terraform': 'modules/terraform.md'
+
+# Docs directory
+docs_dir: docs/en
