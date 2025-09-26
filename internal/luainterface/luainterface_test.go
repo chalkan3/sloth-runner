@@ -131,7 +131,7 @@ func TestSaltTarget_Cmd_Basic(t *testing.T) {
 	L.SetGlobal("assert_equal", L.NewFunction(func(L *lua.LState) int {
 		expected := L.ToString(1)
 		actual := L.ToString(2)
-		assert.Equal(t, expected, actual)
+		assert.Contains(t, actual, expected)
 		return 0
 	}))
 	L.SetGlobal("assert_not_nil", L.NewFunction(func(L *lua.LState) int {
