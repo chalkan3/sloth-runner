@@ -617,6 +617,7 @@ func OpenAll(L *lua.LState) {
 	L.PreloadModule("gcp", GCPLoader)
 	L.PreloadModule("python", PythonLoader)
 	L.PreloadModule("aws", AWSLoader)
+	L.PreloadModule("pkg", NewPkgModule().Loader)
 	// Assuming other modules will be refactored to have a simple Loader function.
 	// If they still use the New...Module pattern, they need to be updated.
 	// For now, let's assume they will be updated or we will fix them next.
@@ -639,6 +640,7 @@ func OpenAll(L *lua.LState) {
 		gcp = require("gcp")
 		aws = require("aws")
 		salt = require("salt")
+		pkg = require("pkg")
 	`); err != nil {
 		panic(err)
 	}

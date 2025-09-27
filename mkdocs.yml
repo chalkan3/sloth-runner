@@ -157,6 +157,7 @@ nav:
         - 'Pulumi': 'en/modules/pulumi.md'
         - 'Python': 'en/modules/python.md'
         - 'Salt': 'en/modules/salt.md'
+        - 'Pkg': 'en/modules/pkg.md'
         - 'Terraform': 'en/modules/terraform.md'
     - 'Development':
       - 'Testing': 'en/testing.md'
