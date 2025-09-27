@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"sync"
 
+	"github.com/pterm/pterm"
 	pb "github.com/chalkan3/sloth-runner/proto"
 	"google.golang.org/grpc"
 )
@@ -31,7 +31,7 @@ func (s *agentRegistryServer) RegisterAgent(ctx context.Context, req *pb.Registe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	slog.Info(fmt.Sprintf("Registering agent: %s at %s", req.AgentName, req.AgentAddress))
+	pterm.Success.Printf("Agent registered: %s at %s\n", req.AgentName, req.AgentAddress)
 	s.agents[req.AgentName] = &pb.AgentInfo{
 		AgentName:    req.AgentName,
 		AgentAddress: req.AgentAddress,
@@ -42,7 +42,7 @@ func (s *agentRegistryServer) RegisterAgent(ctx context.Context, req *pb.Registe
 
 // ListAgents lists all registered agents.
 func (s *agentRegistryServer) ListAgents(ctx context.Context, req *pb.ListAgentsRequest) (*pb.ListAgentsResponse, error) {
-	slog.Info("Listing registered agents")
+	pterm.Info.Println("Listing registered agents")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -118,7 +118,7 @@ func (s *agentRegistryServer) Start(port int) error {
 
 	s.grpcServer = grpc.NewServer()
 	pb.RegisterAgentRegistryServer(s.grpcServer, s)
-	slog.Info(fmt.Sprintf("Agent registry listening at %v", lis.Addr()))
+	pterm.Info.Printf("Agent registry listening at %v\n", lis.Addr())
 	return s.grpcServer.Serve(lis)
 }
 

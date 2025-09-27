@@ -1124,6 +1124,7 @@ var agentStartCmd = &cobra.Command{
 		masterAddr, _ := cmd.Flags().GetString("master")
 		agentName, _ := cmd.Flags().GetString("name")
 		daemon, _ := cmd.Flags().GetBool("daemon")
+		bindAddress, _ := cmd.Flags().GetString("bind-address")
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -1146,7 +1147,7 @@ var agentStartCmd = &cobra.Command{
 				os.Remove(pidFile)
 			}
 
-			command := execCommand(os.Args[0], "agent", "start", "--port", strconv.Itoa(port), "--name", agentName, "--master", masterAddr)
+			command := execCommand(os.Args[0], "agent", "start", "--port", strconv.Itoa(port), "--name", agentName, "--master", masterAddr, "--bind-address", bindAddress)
 			setSysProcAttr(command)
 			stdoutFile, err := os.OpenFile(fmt.Sprintf("agent-%s.log", agentName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
@@ -1174,9 +1175,20 @@ var agentStartCmd = &cobra.Command{
 			return nil
 		}
 
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		listenAddr := fmt.Sprintf(":%d", port)
+		if bindAddress != "" {
+			listenAddr = fmt.Sprintf("%s:%d", bindAddress, port)
+		}
+
+		lis, err := net.Listen("tcp", listenAddr)
 		if err != nil {
 			return fmt.Errorf("failed to listen: %v", err)
+		}
+
+		// Determine the address to report to the master
+		reportAddress := lis.Addr().String()
+		if bindAddress != "" {
+			reportAddress = fmt.Sprintf("%s:%d", bindAddress, port)
 		}
 
 		if masterAddr != "" {
@@ -1189,12 +1201,12 @@ var agentStartCmd = &cobra.Command{
 			registryClient := pb.NewAgentRegistryClient(conn)
 			_, err = registryClient.RegisterAgent(context.Background(), &pb.RegisterAgentRequest{
 				AgentName:    agentName,
-				AgentAddress: lis.Addr().String(),
+				AgentAddress: reportAddress,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to register with master: %v", err)
 			}
-			slog.Info(fmt.Sprintf("Agent registered with master at %s", masterAddr))
+			slog.Info(fmt.Sprintf("Agent registered with master at %s, reporting address %s", masterAddr, reportAddress))
 		}
 
 		s := grpc.NewServer()
@@ -1232,11 +1244,36 @@ var agentRunCmd = &cobra.Command{
 			return fmt.Errorf("failed to execute command on agent %s: %v", agentName, err)
 		}
 
+		outputContent := ""
 		if !resp.GetSuccess() {
-			return fmt.Errorf("command failed on agent %s: %s (stderr: %s, error: %s)", agentName, resp.GetStdout(), resp.GetStderr(), resp.GetError())
+			outputContent += pterm.Error.Sprintf("Command failed on agent %s!\n", agentName)
+			if resp.GetStdout() != "" {
+				outputContent += pterm.DefaultSection.WithBottomPadding(0).WithTopPadding(0).Sprintf("Stdout:\n")
+				outputContent += pterm.DefaultBasicText.Sprintf("%s\n", resp.GetStdout())
+			}
+			if resp.GetStderr() != "" {
+				outputContent += pterm.DefaultSection.WithBottomPadding(0).WithTopPadding(0).Sprintf("Stderr:\n")
+				outputContent += pterm.DefaultBasicText.Sprintf("%s\n", resp.GetStderr())
+			}
+			if resp.GetError() != "" {
+				outputContent += pterm.DefaultSection.WithBottomPadding(0).WithTopPadding(0).Sprintf("Error:\n")
+				outputContent += pterm.DefaultBasicText.Sprintf("%s\n", resp.GetError())
+			}
+			pterm.DefaultBox.WithTitle(pterm.Error.Sprintf("Command Execution Result on %s", agentName)).WithTitleTopLeft().Println(outputContent)
+			return fmt.Errorf("command execution failed on agent %s", agentName)
 		}
 
-		fmt.Printf("Command executed successfully on agent %s:\nStdout:\n%s\nStderr:\n%s\n", agentName, resp.GetStdout(), resp.GetStderr())
+		outputContent += pterm.Success.Sprintf("Command executed successfully!\n")
+		outputContent += pterm.Info.Sprintf("Command: %s\n", command)
+		if resp.GetStdout() != "" {
+			outputContent += pterm.DefaultSection.WithBottomPadding(0).WithTopPadding(0).Sprintf("Stdout:\n")
+			outputContent += pterm.DefaultBasicText.Sprintf("%s\n", resp.GetStdout())
+		}
+		if resp.GetStderr() != "" {
+			outputContent += pterm.DefaultSection.WithBottomPadding(0).WithTopPadding(0).Sprintf("Stderr:\n")
+			outputContent += pterm.DefaultBasicText.Sprintf("%s\n", resp.GetStderr())
+		}
+		pterm.DefaultBox.WithTitle(pterm.Success.Sprintf("Command Execution Result on %s", agentName)).WithTitleTopLeft().Println(outputContent)
 		return nil
 	},
 }
@@ -1313,6 +1350,25 @@ var agentStopCmd = &cobra.Command{
 type agentServer struct {
 	pb.UnimplementedAgentServer
 	grpcServer *grpc.Server
+}
+
+
+func (s *agentServer) RunCommand(ctx context.Context, in *pb.RunCommandRequest) (*pb.RunCommandResponse, error) {
+	slog.Info(fmt.Sprintf("Executing command on agent: %s", in.GetCommand()))
+
+	cmd := exec.Command("bash", "-c", in.GetCommand())
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	return &pb.RunCommandResponse{
+		Success: err == nil,
+		Stdout:  stdout.String(),
+		Stderr:  stderr.String(),
+		Error:   fmt.Sprintf("%v", err),
+	}, nil
 }
 
 func (s *agentServer) Shutdown(ctx context.Context, in *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
@@ -1506,6 +1562,7 @@ func init() {
 	agentStartCmd.Flags().String("master", "", "The address of the master server to register with")
 	agentStartCmd.Flags().String("name", "", "The name of the agent")
 	agentStartCmd.Flags().Bool("daemon", false, "Run the agent as a daemon")
+	agentStartCmd.Flags().String("bind-address", "", "The IP address for the agent to bind to and report to the master")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(templateCmd)
 	rootCmd.AddCommand(newCmd)
