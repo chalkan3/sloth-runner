@@ -52,12 +52,17 @@ markdown_extensions:
 # Navigation
 nav:
   - 'Home': 'index.md'
+  - 'Tutorial': 'TUTORIAL.md'
+  - 'Examples': 'EXAMPLES.md'
+  - 'Lua API': 'LUA_API.md'
   - 'English':
     - 'Getting Started': 'en/getting-started.md'
     - 'Core Concepts': 'en/core-concepts.md'
+    - 'Advanced Features': 'en/advanced-features.md'
     - 'Master-Agent Architecture': 'en/master-agent-architecture.md'
     - 'Enhanced Agent Output': 'en/enhanced-agent-output.md'
     - 'Distributed Task Execution': 'en/distributed.md'
+    - 'Scheduler': 'en/scheduler.md'
     - 'CLI Commands': 'en/CLI.md'
     - 'Interactive REPL': 'en/repl.md'
     - 'Testing': 'en/testing.md'
@@ -82,7 +87,9 @@ nav:
   - 'Português':
     - 'Início Rápido': 'pt/getting-started.md'
     - 'Conceitos Essenciais': 'pt/core-concepts.md'
+    - 'Recursos Avançados': 'pt/advanced-features.md'
     - 'Execução de Tarefas Distribuídas': 'pt/distributed.md'
+    - 'Agendador': 'pt/scheduler.md'
     - 'Comandos da CLI': 'pt/CLI.md'
     - 'REPL Interativo': 'pt/repl.md'
     - 'Testes': 'pt/testing.md'
@@ -107,7 +114,9 @@ nav:
   - '中文':
     - '快速入门': 'zh/getting-started.md'
     - '核心概念': 'zh/core-concepts.md'
+    - '高级功能': 'zh/advanced-features.md'
     - '分布式任务执行': 'zh/distributed.md'
+    - '调度器': 'zh/scheduler.md'
     - 'CLI 命令': 'zh/CLI.md'
     - '交互式 REPL': 'zh/repl.md'
     - '测试': 'zh/testing.md'
