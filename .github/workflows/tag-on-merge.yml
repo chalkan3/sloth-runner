@@ -19,10 +19,30 @@ jobs:
         with:
           fetch-depth: 0 # Required to fetch all history for correct versioning
 
-      - name: Bump version and push tag
-        id: tag_action
-        uses: anothrNick/github-tag-action@1.67.0
+      - name: Create and Push Tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          # Fetch all tags to ensure correct versioning
+          git fetch --tags
+
+          # Get the latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Extract version components
+          MAJOR=$(echo $LATEST_TAG | sed -E 's/v([0-9]+)\.([0-9]+)\.([0-9]+)/\1/')
+          MINOR=$(echo $LATEST_TAG | sed -E 's/v([0-9]+)\.([0-9]+)\.([0-9]+)/\2/')
+          PATCH=$(echo $LATEST_TAG | sed -E 's/v([0-9]+)\.([0-9]+)\.([0-9]+)/\3/')
+
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "New tag: $NEW_TAG"
+
+          # Create and push the new tag
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BUMP: patch
-          WITH_V: true
