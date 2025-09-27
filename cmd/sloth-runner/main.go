@@ -1126,13 +1126,8 @@ var agentStartCmd = &cobra.Command{
 		daemon, _ := cmd.Flags().GetBool("daemon")
 		bindAddress, _ := cmd.Flags().GetString("bind-address")
 
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get user home directory: %w", err)
-		}
-
 		if daemon {
-			pidFile := filepath.Join(homeDir, ".projects", "task-runner", fmt.Sprintf("sloth-runner-agent-%s.pid", agentName))
+			pidFile := filepath.Join("/tmp", fmt.Sprintf("sloth-runner-agent-%s.pid", agentName))
 			if _, err := os.Stat(pidFile); err == nil {
 				pidBytes, err := ioutil.ReadFile(pidFile)
 				if err == nil {
@@ -1147,16 +1142,22 @@ var agentStartCmd = &cobra.Command{
 				os.Remove(pidFile)
 			}
 
+			logDir := "/var/log/sloth-runner"
+			if err := os.MkdirAll(logDir, 0755); err != nil {
+				return fmt.Errorf("failed to create log directory %s: %w", logDir, err)
+			}
+			logFilePath := filepath.Join(logDir, fmt.Sprintf("agent-%s.log", agentName))
+
 			command := execCommand(os.Args[0], "agent", "start", "--port", strconv.Itoa(port), "--name", agentName, "--master", masterAddr, "--bind-address", bindAddress)
 			setSysProcAttr(command)
-			stdoutFile, err := os.OpenFile(fmt.Sprintf("agent-%s.log", agentName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			stdoutFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
 				return fmt.Errorf("failed to open agent log for stdout: %w", err)
 			}
 			defer stdoutFile.Close()
 			command.Stdout = stdoutFile
 
-			stderrFile, err := os.OpenFile(fmt.Sprintf("agent-%s.log", agentName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			stderrFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
 				return fmt.Errorf("failed to open agent log for stderr: %w", err)
 			}
@@ -1171,7 +1172,7 @@ var agentStartCmd = &cobra.Command{
 				return fmt.Errorf("failed to write PID file: %w", err)
 			}
 
-			cmd.Printf("Agent %s started with PID %d.\n", agentName, command.Process.Pid)
+			cmd.Printf("Agent %s started with PID %d. Logs can be found at %s.\n", agentName, command.Process.Pid, logFilePath)
 			return nil
 		}
 
@@ -1207,6 +1208,17 @@ var agentStartCmd = &cobra.Command{
 				return fmt.Errorf("failed to register with master: %v", err)
 			}
 			slog.Info(fmt.Sprintf("Agent registered with master at %s, reporting address %s", masterAddr, reportAddress))
+
+			// Start heartbeat sender
+			go func() {
+				for {
+					_, err := registryClient.Heartbeat(context.Background(), &pb.HeartbeatRequest{AgentName: agentName})
+					if err != nil {
+						slog.Error(fmt.Sprintf("Failed to send heartbeat to master: %v", err))
+					}
+					time.Sleep(5 * time.Second)
+				}
+			}()
 		}
 
 		s := grpc.NewServer()
@@ -1219,7 +1231,6 @@ var agentStartCmd = &cobra.Command{
 		return nil
 	},
 }
-
 var agentRunCmd = &cobra.Command{
 	Use:   "run <agent_name> <command>",
 	Short: "Executes a command on a remote agent",
@@ -1311,15 +1322,21 @@ var agentListCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "AGENT NAME\tADDRESS")
-		fmt.Fprintln(w, "------------\t----------")
+		fmt.Fprintln(w, "AGENT NAME\tADDRESS\tSTATUS\tLAST HEARTBEAT")
+		fmt.Fprintln(w, "------------\t----------\t------\t--------------")
 		for _, agent := range resp.GetAgents() {
-			fmt.Fprintf(w, "%s\t%s\n", agent.GetAgentName(), agent.GetAgentAddress())
+			status := agent.GetStatus()
+			coloredStatus := status
+			if status == "Active" {
+				coloredStatus = pterm.Green(status)
+			} else {
+				coloredStatus = pterm.Red(status)
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\n", agent.GetAgentName(), agent.GetAgentAddress(), coloredStatus, agent.GetLastHeartbeat())
 		}
 		return w.Flush()
 	},
 }
-
 var agentStopCmd = &cobra.Command{
 	Use:   "stop <agent_name>",
 	Short: "Stops a remote agent",
@@ -1495,6 +1512,13 @@ var masterCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 		daemon, _ := cmd.Flags().GetBool("daemon")
+		debug, _ := cmd.Flags().GetBool("debug")
+
+		if debug {
+			pterm.DefaultLogger.Level = pterm.LogLevelDebug
+			slog.SetDefault(slog.New(pterm.NewSlogHandler(&pterm.DefaultLogger)))
+			pterm.Debug.Println("Debug mode enabled for master server.")
+		}
 
 		if daemon {
 			pidFile := filepath.Join(".", "sloth-runner-master.pid")
@@ -1557,6 +1581,7 @@ func init() {
 	rootCmd.AddCommand(masterCmd)
 	masterCmd.Flags().IntP("port", "p", 50053, "The port for the master to listen on")
 	masterCmd.Flags().Bool("daemon", false, "Run the master server as a daemon")
+	masterCmd.Flags().Bool("debug", false, "Enable debug logging for the master server")
 
 	agentStartCmd.Flags().IntP("port", "p", 50051, "The port for the agent to listen on")
 	agentStartCmd.Flags().String("master", "", "The address of the master server to register with")

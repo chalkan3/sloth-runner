@@ -55,6 +55,8 @@ nav:
   - 'English':
     - 'Getting Started': 'en/getting-started.md'
     - 'Core Concepts': 'en/core-concepts.md'
+    - 'Master-Agent Architecture': 'en/master-agent-architecture.md'
+    - 'Enhanced Agent Output': 'en/enhanced-agent-output.md'
     - 'Distributed Task Execution': 'en/distributed.md'
     - 'CLI Commands': 'en/CLI.md'
     - 'Interactive REPL': 'en/repl.md'

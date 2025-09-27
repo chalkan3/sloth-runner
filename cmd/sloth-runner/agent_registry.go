@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/pterm/pterm"
 	pb "github.com/chalkan3/sloth-runner/proto"
@@ -48,10 +49,34 @@ func (s *agentRegistryServer) ListAgents(ctx context.Context, req *pb.ListAgents
 
 	var agents []*pb.AgentInfo
 	for _, agent := range s.agents {
-		agents = append(agents, agent)
+		// Determine agent status based on last heartbeat
+		status := "Inactive"
+		pterm.Debug.Printf("Agent %s: LastHeartbeat=%d, CurrentTime=%d, Diff=%d\n", agent.AgentName, agent.LastHeartbeat, time.Now().Unix(), time.Now().Unix()-agent.LastHeartbeat)
+		if time.Now().Unix()-agent.LastHeartbeat < 60 { // Agent considered active if heartbeat within last 60 seconds
+			status = "Active"
+		}
+		agents = append(agents, &pb.AgentInfo{
+			AgentName:     agent.AgentName,
+			AgentAddress:  agent.AgentAddress,
+			LastHeartbeat: agent.LastHeartbeat,
+			Status:        status,
+		})
 	}
 
 	return &pb.ListAgentsResponse{Agents: agents}, nil
+}
+
+// Heartbeat updates the last heartbeat timestamp for an agent.
+func (s *agentRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if agent, ok := s.agents[req.AgentName]; ok {
+		agent.LastHeartbeat = time.Now().Unix()
+		pterm.Debug.Printf("Heartbeat received from agent: %s\n", req.AgentName)
+		return &pb.HeartbeatResponse{Success: true, Message: "Heartbeat received"}, nil
+	}
+	return &pb.HeartbeatResponse{Success: false, Message: "Agent not found"}, nil
 }
 
 // ExecuteCommand executes a command on a remote agent.

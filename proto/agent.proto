@@ -27,13 +27,6 @@ message ExecuteTaskResponse {
   bytes workspace = 3;
 }
 
-service AgentRegistry {
-  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
-  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
-  rpc StopAgent(StopAgentRequest) returns (StopAgentResponse);
-  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
-}
-
 message RegisterAgentRequest {
   string agent_name = 1;
   string agent_address = 2;
@@ -47,7 +40,8 @@ message RegisterAgentResponse {
 message AgentInfo {
   string agent_name = 1;
   string agent_address = 2;
-  // Add more fields later, e.g., last_heartbeat, status
+  int64 last_heartbeat = 3; // Unix timestamp of the last heartbeat
+  string status = 4;
 }
 
 message ListAgentsRequest {
@@ -88,4 +82,21 @@ message RunCommandResponse {
   string stdout = 2;
   string stderr = 3;
   string error = 4;
+}
+
+service AgentRegistry {
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc StopAgent(StopAgentRequest) returns (StopAgentResponse);
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message HeartbeatRequest {
+  string agent_name = 1;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
 }
