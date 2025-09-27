@@ -52,42 +52,6 @@ markdown_extensions:
 # Navigation
 nav:
   - 'Home': 'index.md'
-  - 'English':
-    - 'Getting Started':
-      - 'Tutorial': 'TUTORIAL.md'
-      - 'Installation': 'en/getting-started.md'
-      - 'Core Concepts': 'en/core-concepts.md'
-    - 'User Guide':
-      - 'CLI Commands': 'en/CLI.md'
-      - 'Interactive REPL': 'en/repl.md'
-      - 'Advanced Features': 'en/advanced-features.md'
-      - 'Examples': 'en/advanced-examples.md'
-    - 'Master-Agent':
-      - 'Architecture': 'en/master-agent-architecture.md'
-      - 'Enhanced Agent Output': 'en/enhanced-agent-output.md'
-      - 'Distributed Task Execution': 'en/distributed.md'
-      - 'Scheduler': 'en/scheduler.md'
-    - 'API & Modules':
-      - 'Lua API': 'LUA_API.md'
-      - 'Modules':
-        - 'AWS': 'en/modules/aws.md'
-        - 'Azure': 'en/modules/azure.md'
-        - 'Data': 'en/modules/data.md'
-        - 'DigitalOcean': 'en/modules/digitalocean.md'
-        - 'Docker': 'en/modules/docker.md'
-        - 'Exec': 'en/modules/exec.md'
-        - 'FS': 'en/modules/fs.md'
-        - 'GCP': 'en/modules/gcp.md'
-        - 'Git': 'en/modules/git.md'
-        - 'Log': 'en/modules/log.md'
-        - 'Net': 'en/modules/net.md'
-        - 'Notifications': 'en/modules/notifications.md'
-        - 'Pulumi': 'en/modules/pulumi.md'
-        - 'Python': 'en/modules/python.md'
-        - 'Salt': 'en/modules/salt.md'
-        - 'Terraform': 'en/modules/terraform.md'
-    - 'Development':
-      - 'Testing': 'en/testing.md'
   - 'Português':
     - 'Primeiros Passos':
       - 'Tutorial': 'TUTORIAL.md'
@@ -160,6 +124,42 @@ nav:
         - 'Terraform': 'zh/modules/terraform.md'
     - '开发':
       - '测试': 'zh/testing.md'
+  - 'English':
+    - 'Getting Started':
+      - 'Tutorial': 'TUTORIAL.md'
+      - 'Installation': 'en/getting-started.md'
+      - 'Core Concepts': 'en/core-concepts.md'
+    - 'User Guide':
+      - 'CLI Commands': 'en/CLI.md'
+      - 'Interactive REPL': 'en/repl.md'
+      - 'Advanced Features': 'en/advanced-features.md'
+      - 'Examples': 'en/advanced-examples.md'
+    - 'Master-Agent':
+      - 'Architecture': 'en/master-agent-architecture.md'
+      - 'Enhanced Agent Output': 'en/enhanced-agent-output.md'
+      - 'Distributed Task Execution': 'en/distributed.md'
+      - 'Scheduler': 'en/scheduler.md'
+    - 'API & Modules':
+      - 'Lua API': 'LUA_API.md'
+      - 'Modules':
+        - 'AWS': 'en/modules/aws.md'
+        - 'Azure': 'en/modules/azure.md'
+        - 'Data': 'en/modules/data.md'
+        - 'DigitalOcean': 'en/modules/digitalocean.md'
+        - 'Docker': 'en/modules/docker.md'
+        - 'Exec': 'en/modules/exec.md'
+        - 'FS': 'en/modules/fs.md'
+        - 'GCP': 'en/modules/gcp.md'
+        - 'Git': 'en/modules/git.md'
+        - 'Log': 'en/modules/log.md'
+        - 'Net': 'en/modules/net.md'
+        - 'Notifications': 'en/modules/notifications.md'
+        - 'Pulumi': 'en/modules/pulumi.md'
+        - 'Python': 'en/modules/python.md'
+        - 'Salt': 'en/modules/salt.md'
+        - 'Terraform': 'en/modules/terraform.md'
+    - 'Development':
+      - 'Testing': 'en/testing.md'
 
 # Docs directory
 docs_dir: docs
